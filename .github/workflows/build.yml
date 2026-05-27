@@ -38,17 +38,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
         run: |
-          YEAR=$(date -u +%Y)
-          MONTH=$(date -u +%-m)
-          DAY=$(date -u +%-d)
-          BASE="${YEAR}.${MONTH}.${DAY}"
+          YY=$(date -u +%y)
+          MM=$(date -u +%m)
+          BASE="${YY}.${MM}"
 
-          # Find next available -N suffix for today
+          # Find next available build number for this month
           N=1
-          while gh release view "v${BASE}-${N}" >/dev/null 2>&1; do
+          while gh release view "v${BASE}.${N}" >/dev/null 2>&1; do
             N=$((N + 1))
           done
-          VERSION="${BASE}-${N}"
+          VERSION="${BASE}.${N}"
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
@@ -81,20 +80,9 @@ jobs:
         shell: bash
         run: |
           VERSION="${{ needs.version.outputs.version }}"
-
-          # Windows MSI requires each version segment ≤ 255.
-          # CalVer YYYY.M.D-N can overflow (e.g. 4.11 → 411 > 255).
-          # Encode as M.D.N — each segment guaranteed ≤ 255.
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            IFS='.-' read -r _YEAR MONTH DAY BUILD <<< "$VERSION"
-            TAURI_VERSION="${MONTH}.${DAY}.${BUILD}"
-          else
-            TAURI_VERSION="$VERSION"
-          fi
-
           sed -i.bak 's/"version": "0.0.0"/"version": "'"${VERSION}"'"/' package.json
           sed -i.bak 's/^version = "0.0.0"/version = "'"${VERSION}"'"/' src-tauri/Cargo.toml
-          sed -i.bak 's/"version": "0.0.0"/"version": "'"${TAURI_VERSION}"'"/' src-tauri/tauri.conf.json
+          sed -i.bak 's/"version": "0.0.0"/"version": "'"${VERSION}"'"/' src-tauri/tauri.conf.json
           find . -name '*.bak' -delete
 
       - name: Install Rust
