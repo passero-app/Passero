@@ -4,17 +4,35 @@
   import SettingsView from "./views/SettingsView.svelte";
 
   import GpgView from "./views/GpgView.svelte";
+  import M0Setup from "./views/M0Setup.svelte";
   import { ui } from "$lib/stores/ui.svelte";
   import { passwords } from "$lib/stores/passwords.svelte";
   import { settings } from "$lib/stores/settings.svelte";
   import { onMount } from "svelte";
 
-  onMount(() => {
+  const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
+  let unlocked = $state(!isIos);
+
+  function loadStores() {
     passwords.refresh();
     settings.load();
+  }
+
+  function handleUnlocked() {
+    unlocked = true;
+    loadStores();
+  }
+
+  onMount(() => {
+    if (!isIos) {
+      loadStores();
+    }
   });
 </script>
 
+{#if !unlocked}
+  <M0Setup onUnlocked={handleUnlocked} />
+{:else}
 <div class="flex h-screen bg-zinc-900 text-zinc-100">
   <Sidebar />
   <main class="flex-1 overflow-hidden flex flex-col">
@@ -36,3 +54,4 @@
     {/if}
   </main>
 </div>
+{/if}

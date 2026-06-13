@@ -10,7 +10,7 @@ use totp_rs::TOTP;
 use url::Url;
 
 use crate::error::{PasseroError, Result};
-use passero_core::crypto::{cert_from_bytes, Cert};
+use passero_core::crypto::{cert_from_bytes, generate_key, Cert};
 use passero_core::{store, sync};
 
 pub struct IosState {
@@ -70,6 +70,12 @@ pub struct TotpCode {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct GeneratedKey {
+    pub fingerprint: String,
+    pub armored: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct TotpInfo {
     pub issuer: Option<String>,
     pub account: Option<String>,
@@ -84,7 +90,7 @@ fn token(state: &State<'_, IosState>) -> Option<String> {
     state.token.lock().unwrap().clone()
 }
 
-fn load_key(state: &State<'_, IosState>) -> Result<Cert> {
+fn loaded_cert(state: &State<'_, IosState>) -> Result<Cert> {
     let guard = state.key_armored.lock().unwrap();
     let bytes = guard
         .as_ref()
@@ -154,7 +160,7 @@ pub async fn list_passwords(state: State<'_, IosState>) -> Result<Vec<PasswordEn
 #[tauri::command]
 pub async fn show_password(state: State<'_, IosState>, path: String) -> Result<String> {
     let dir = store_dir(&state);
-    let key = load_key(&state)?;
+    let key = loaded_cert(&state)?;
     let bytes = store::show(&dir, &path, &key).map_err(|e| PasseroError::PassError(e.to_string()))?;
     Ok(String::from_utf8_lossy(&bytes).to_string())
 }
@@ -166,7 +172,7 @@ pub async fn insert_password(
     content: String,
 ) -> Result<()> {
     let dir = store_dir(&state);
-    let key = load_key(&state)?;
+    let key = loaded_cert(&state)?;
     store::insert(&dir, &path, content.as_bytes(), std::slice::from_ref(&key))
         .map_err(|e| PasseroError::PassError(e.to_string()))
 }
@@ -256,6 +262,49 @@ pub async fn init_password_store(state: State<'_, IosState>, gpg_ids: Vec<String
 }
 
 #[tauri::command]
+pub async fn generate_in_app_key(
+    state: State<'_, IosState>,
+    user_id: String,
+) -> Result<GeneratedKey> {
+    let (cert, armored_bytes) = generate_key(&user_id).map_err(|e| PasseroError::GpgError(e.to_string()))?;
+    let fingerprint = cert.fingerprint().to_hex();
+    *state.key_armored.lock().unwrap() = Some(armored_bytes.clone());
+    let armored = String::from_utf8(armored_bytes)
+        .map_err(|e| PasseroError::GpgError(format!("armored key is not valid UTF-8: {e}")))?;
+    Ok(GeneratedKey {
+        fingerprint,
+        armored,
+    })
+}
+
+#[tauri::command]
+pub async fn load_key(state: State<'_, IosState>, armored: String) -> Result<String> {
+    let bytes = armored.into_bytes();
+    let cert = cert_from_bytes(&bytes).map_err(|e| PasseroError::GpgError(e.to_string()))?;
+    let fingerprint = cert.fingerprint().to_hex();
+    *state.key_armored.lock().unwrap() = Some(bytes);
+    Ok(fingerprint)
+}
+
+#[tauri::command]
+pub async fn clone_store(
+    state: State<'_, IosState>,
+    url: String,
+    token: String,
+) -> Result<()> {
+    let dir = store_dir(&state);
+    *state.token.lock().unwrap() = Some(token.clone());
+    sync::clone(&url, &dir, Some(&token)).map_err(|e| PasseroError::GitError(e.to_string()))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn init_store(state: State<'_, IosState>, fingerprints: Vec<String>) -> Result<()> {
+    let dir = store_dir(&state);
+    store::init(&dir, &fingerprints).map_err(|e| PasseroError::PassError(e.to_string()))
+}
+
+#[tauri::command]
 pub async fn list_gpg_keys(_state: State<'_, IosState>) -> Result<Vec<GpgKey>> {
     Ok(vec![])
 }
@@ -275,10 +324,16 @@ pub async fn get_store_gpg_id(state: State<'_, IosState>) -> Result<String> {
 
 #[tauri::command]
 pub async fn generate_gpg_key(
-    _state: State<'_, IosState>,
-    _params: GenerateKeyParams,
+    state: State<'_, IosState>,
+    params: GenerateKeyParams,
 ) -> Result<String> {
-    Err(PasseroError::GpgError("not supported on iOS (M0)".into()))
+    let user_id = if params.email.is_empty() {
+        params.name.clone()
+    } else {
+        format!("{} <{}>", params.name, params.email)
+    };
+    let generated = generate_in_app_key(state, user_id).await?;
+    Ok(generated.fingerprint)
 }
 
 #[tauri::command]
@@ -394,14 +449,14 @@ pub async fn git_clone(
 
 fn read_entry(state: &State<'_, IosState>, path: &str) -> Result<String> {
     let dir = store_dir(state);
-    let key = load_key(state)?;
+    let key = loaded_cert(state)?;
     let bytes = store::show(&dir, path, &key).map_err(|e| PasseroError::PassError(e.to_string()))?;
     Ok(String::from_utf8_lossy(&bytes).to_string())
 }
 
 fn write_entry(state: &State<'_, IosState>, path: &str, content: &str) -> Result<()> {
     let dir = store_dir(state);
-    let key = load_key(state)?;
+    let key = loaded_cert(state)?;
     store::insert(&dir, path, content.as_bytes(), std::slice::from_ref(&key))
         .map_err(|e| PasseroError::PassError(e.to_string()))
 }

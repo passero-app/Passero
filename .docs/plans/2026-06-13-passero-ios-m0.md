@@ -782,6 +782,35 @@ M1 (full read path), M2 (write path), M3 (UI integration + paid-program enrollme
 - **Task 4** — DONE (`30c6aa3`, fix `b7e58a7`). Store layout + git2 sync; 5/5 host tests green.
 - Tasks **1, 5, 6, 7** remain (device/Xcode/iPhone).
 
+### Task 6 — DONE. Biometric-gated key flow (plugins + commands + setup screen)
+Plugin versions (verified against crates.io / npm, not guessed):
+- Rust: `tauri-plugin-keystore = "=2.1.0-alpha.1"`, `tauri-plugin-biometric = "2.3.2"` (both under the `cfg(target_os = "ios")` deps block).
+- JS: `@impierce/tauri-plugin-keystore@2.1.0-alpha.1`, `@tauri-apps/plugin-biometric@2.3.2`.
+
+Both plugins are registered iOS-only in `lib.rs` (`.plugin(tauri_plugin_keystore::init())` / `.plugin(tauri_plugin_biometric::init())` inside the `#[cfg(target_os = "ios")]` builder branch). They are gated to iOS because the feature is iOS-only and to keep the desktop build surface unchanged.
+
+New iOS Tauri commands (`src-tauri/src/ios/mod.rs`), all added to the iOS `generate_handler!` list:
+- `generate_in_app_key(user_id) -> GeneratedKey { fingerprint, armored }` — `crypto::generate_key`, loads the secret into `IosState.key_armored`, returns the armored TSK so the frontend persists it via the keystore JS API.
+- `load_key(armored) -> String` (fingerprint) — `cert_from_bytes`, loads bytes into `IosState.key_armored`.
+- `clone_store(url, token)` — stores PAT in `IosState.token`, calls `sync::clone(url, dir, Some(token))`.
+- `init_store(fingerprints)` — `store::init`.
+- `generate_gpg_key` stub now delegates to `generate_in_app_key` (so the existing main-UI command works on device).
+- The private `load_key(&state) -> Cert` helper was renamed `loaded_cert` to free the command name.
+
+Frontend: `src/views/M0Setup.svelte` (generate → keystore `store`; optional clone+init; "Unlock with FaceID" → keystore `retrieve` triggers FaceID → `load_key`). Gated in `App.svelte` by a runtime user-agent check (`/iPad|iPhone|iPod/.test(navigator.userAgent)`); desktop sets `unlocked = true` immediately so its behavior is unchanged.
+
+Keystore note: the published `@impierce/tauri-plugin-keystore` iOS native stores ONE secret under a hardcoded keychain account with `.userPresence` + `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` access control (i.e. the biometric gate is built in). `retrieve(service, user)` / `remove(service, user)` args are accepted but ignored by the iOS implementation; we pass `("app.passero", "passero-pgp-key")` as cosmetic identifiers.
+
+### iOS-only capability file (committed)
+Added `src-tauri/capabilities/ios.json` (`"platforms": ["iOS"]`) granting `keystore:default` + `biometric:default`. Kept separate from `capabilities/default.json` so the desktop capability schema (which has neither plugin) still validates.
+
+### NSFaceIDUsageDescription — MANUAL re-apply needed after any `tauri ios init` / gen regeneration
+`src-tauri/gen/apple/` is git-ignored (project.yml and Info.plist are NOT committed). FaceID will crash the app at runtime without `NSFaceIDUsageDescription`. The edit applied for Task 6:
+- In `src-tauri/gen/apple/project.yml`, under `targets.passero_iOS.info.properties`, add:
+  `NSFaceIDUsageDescription: Unlock your password store`
+- Then run `xcodegen generate` in `src-tauri/gen/apple` (verified it lands in `passero_iOS/Info.plist`).
+Anyone regenerating the Apple project MUST re-apply this or FaceID retrieval will crash.
+
 ### `sync` API changed — Task 5/6 must use the new signatures
 The thread-local token (`set_token`) was removed because it is invisible across Tauri's worker threads. `sync` now takes the PAT explicitly:
 ```rust

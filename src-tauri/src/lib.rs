@@ -93,6 +93,8 @@ pub fn run() {
 
     #[cfg(target_os = "ios")]
     let builder = builder
+        .plugin(tauri_plugin_keystore::init())
+        .plugin(tauri_plugin_biometric::init())
         .manage(ios::IosState::default())
         .invoke_handler(tauri::generate_handler![
             ios::list_passwords,
@@ -106,6 +108,10 @@ pub fn run() {
             ios::add_recipient,
             ios::remove_recipient,
             ios::init_password_store,
+            ios::generate_in_app_key,
+            ios::load_key,
+            ios::clone_store,
+            ios::init_store,
             ios::list_gpg_keys,
             ios::list_gpg_secret_keys,
             ios::get_store_gpg_id,
