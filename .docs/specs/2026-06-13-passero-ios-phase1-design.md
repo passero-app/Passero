@@ -138,23 +138,41 @@ prompt if locked) → return plaintext → UI renders. TOTP entries additionally
 Conflicts surface as errors for the user to resolve (Phase 1: last-writer guidance, no
 auto-merge of ciphertext).
 
-## 7. Milestone 0 — Validation Spike (riskiest assumption first)
+## 7. Milestone 0 — Validation Spike (riskiest assumption first, $0)
 
-Minimal/throwaway UI. Proves the native core end-to-end on a **real iPhone**, against a
-**throwaway test vault** (separate git repo), with **zero contact** with the real store or
-the real YubiKey key:
+M0 is the pre-spend gate: it validates the two things that determine whether this is a good,
+valuable app — **UI feel** and a **biometric-gated, self-owned key** — entirely on the
+author's own iPhone under **free personal-team signing**, with **zero contact** with the
+real store or the real YubiKey key, and **no Apple Developer Program fee**. It is split into
+two free validations:
 
-1. Generate a fresh ed25519 key in-app; store secret in Keychain.
-2. Create/clone a throwaway test vault repo; `init` it (write `.gpg-id`) to the test key.
+### M0a — UI feel
+Get the existing Passero Svelte UI running in the Tauri iOS target (simulator + own device).
+Confirm the tree / search / viewer are a genuinely good touch experience, not a cramped
+desktop port. Cheap and free.
+
+### M0b — crypto + biometric + sync
+On a physical iPhone, against a **throwaway test vault** (separate git repo):
+
+1. Generate a fresh ed25519 key in-app; store the secret in the **Keychain behind
+   Secure-Enclave / FaceID access control** (biometric/passcode required to release it).
+2. Create/clone the throwaway test vault; `init` it (write `.gpg-id`) to the test key.
 3. Encrypt a sample entry to the test key; commit; push.
-4. On the phone: pull → **decrypt the entry** → edit → encrypt → commit → push.
+4. On the phone: FaceID-unlock → pull → **decrypt the entry** → edit → encrypt → commit →
+   push.
 5. Confirm round-trip from a second checkout (e.g., desktop) reads the edit.
 
-**Exit criterion:** the round-trip succeeds on a physical iPhone. If it does, the hard
-unknowns (Sequoia-on-iOS, git2-on-iOS, Keychain key use) are eliminated and the remainder is
-UI assembly. This spike is also the literal **family-onboarding flow**: a new member
-generates a key on their phone, their public cert is added as a recipient, the subtree is
-re-encrypted, and they can decrypt.
+**Exit gate:** *"the app feels good, and I can FaceID-unlock → decrypt → sync on my own
+iPhone, having spent nothing."* If met, the hard unknowns (Sequoia-on-iOS, git2-on-iOS,
+biometric Keychain key use) and the "is it a good app" question are both settled — and
+**only then** is the $99 paid program worth committing for TestFlight/family distribution
+and the NFC enhancement. The biometric software-key model proven here is the same unlock
+model 1Password/Bitwarden use, but self-owned — it is App-Store-worthy on its own, not a
+placeholder.
+
+This spike is also the literal **family-onboarding flow**: a new member generates a key on
+their phone, their public cert is added as a recipient, the subtree is re-encrypted, and
+they can decrypt.
 
 ## 8. Error Handling
 
@@ -218,12 +236,23 @@ Consequences for sequencing:
   ($99/yr)** via TestFlight.
 - **Phase 2 NFC** requires the paid program regardless.
 
-**Recommendation:** validate M0 for free, then enroll in the paid program before **M3**
-(UI integration / distribution). The program also unblocks Phase 2.
+**NFC chicken-and-egg (explicit):** "validate YubiKey-NFC before paying" is not possible —
+CoreNFC needs the paid entitlement, so any NFC testing comes *after* the $99. This is fine
+because the free M0 path (UI + FaceID/Enclave-gated software key) already proves a complete,
+valuable app; NFC is an enhancement layered on afterward, not a gate. (The Lightning/USB-C
+accessory path's account requirements are less certain, but all hardware-YubiKey work is
+treated as post-$99 regardless.)
+
+**Recommendation:** validate M0 (0a + 0b) for free, then enroll in the paid program before
+**M3** (UI integration / distribution). The program also unblocks Phase 2.
 
 ## 12. Milestones (high-level; detailed plan to follow)
 
-- **M0 — Validation spike** (Section 7). Gate for everything else.
+- **M0a — UI feel** (Section 7): existing Svelte UI in the Tauri iOS target feels good on
+  device. Free.
+- **M0b — crypto + biometric + sync** (Section 7): FaceID/Enclave-gated key decrypt + git2
+  round-trip against a throwaway test vault on a real iPhone. Free. Gate for everything else
+  and for the $99 decision.
 - **M1 — `passero-core` read path:** clone, list, show, TOTP, against a real vault;
   off-device unit tests green.
 - **M2 — write path:** insert/edit/generate/delete, encrypt-to-recipients, commit/push.
