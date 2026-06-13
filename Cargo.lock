@@ -3478,6 +3478,7 @@ name = "passero"
 version = "0.0.0"
 dependencies = [
  "dirs",
+ "git2",
  "image",
  "log",
  "passero-core",

@@ -10,7 +10,8 @@ use sequoia_openpgp::policy::{Policy, StandardPolicy};
 use sequoia_openpgp::serialize::stream::*;
 use sequoia_openpgp::serialize::SerializeInto;
 use sequoia_openpgp::types::SymmetricAlgorithm;
-use sequoia_openpgp::{Cert, KeyHandle};
+pub use sequoia_openpgp::cert::Cert;
+use sequoia_openpgp::KeyHandle;
 
 use crate::{CoreError, Result};
 
