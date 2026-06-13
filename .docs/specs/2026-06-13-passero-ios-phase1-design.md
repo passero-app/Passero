@@ -194,19 +194,47 @@ The point of this architecture is testability without a device:
 - **GitHub PAT lifecycle** — fine-grained PAT scope/expiry and re-auth UX; document setup.
 - **Phase 2 dependency** — nothing in Phase 1 should preclude adding YubiKey-NFC unlock as
   an alternate key source behind the `keys` module.
+- **Apple Developer Program** — durable personal use and any family distribution require the
+  paid program ($99/yr). M0 can be validated for free; see Section 11.
 
-## 11. Milestones (high-level; detailed plan to follow)
+## 11. Distribution & Apple Developer Program
+
+Building/running an iOS app intersects Apple's signing rules, which gate cost and timing.
+
+| Activity | Free Apple ID | Notes |
+|---|---|---|
+| iOS **Simulator** | ✅ No account | Most of M1–M3 UI work; no real Keychain/Enclave/NFC hardware |
+| Run on **own iPhone** (Xcode "Personal Team") | ✅ Works | Provisioning profile **expires after 7 days**; ~3 app IDs cap |
+| **TestFlight** (family devices) | ❌ Paid program | Only practical path onto family's stock iPhones |
+| **CoreNFC** entitlement (Phase 2 YubiKey-NFC) | ❌ Paid program | NFC reader sessions require the paid entitlement |
+
+Consequences for sequencing:
+
+- **M0 is free.** The validation spike is a one-time round-trip on the author's own iPhone;
+  free personal-team signing covers it and the 7-day expiry is irrelevant for a single run.
+  **The hard technical assumptions can be proven before spending anything.**
+- **Daily personal use** on free signing is impractical (re-deploy every 7 days).
+- **Family distribution** effectively requires the **paid Apple Developer Program
+  ($99/yr)** via TestFlight.
+- **Phase 2 NFC** requires the paid program regardless.
+
+**Recommendation:** validate M0 for free, then enroll in the paid program before **M3**
+(UI integration / distribution). The program also unblocks Phase 2.
+
+## 12. Milestones (high-level; detailed plan to follow)
 
 - **M0 — Validation spike** (Section 7). Gate for everything else.
 - **M1 — `passero-core` read path:** clone, list, show, TOTP, against a real vault;
   off-device unit tests green.
 - **M2 — write path:** insert/edit/generate/delete, encrypt-to-recipients, commit/push.
 - **M3 — iOS UI integration:** wire the consumption-subset commands to the existing Svelte
-  UI in the Tauri iOS target; vault setup + key generation/onboarding screens.
+  UI in the Tauri iOS target; vault setup + key generation/onboarding screens. **Gate:**
+  enroll in the paid Apple Developer Program here (TestFlight, durable signing) — see
+  Section 11.
 - **M4 — family onboarding polish:** recipient management UX for shared subtrees; multi-key
   test with a second generated key.
 
-## 12. Phase 2 (out of scope here, recorded for continuity)
+## 13. Phase 2 (out of scope here, recorded for continuity)
 
 YubiKey-NFC unlock spike (CoreNFC/YubiKit ↔ OpenPGP applet APDUs bridged to the `keys`
 module); full key-management surface on iOS if warranted; desktop migration onto
