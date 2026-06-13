@@ -116,6 +116,7 @@ impl DecryptionHelper for DecryptHelper<'_> {
             .unencrypted_secret()
             .with_policy(self.policy, None)
             .for_transport_encryption()
+            .for_storage_encryption()
             .collect();
 
         for key in candidates {
