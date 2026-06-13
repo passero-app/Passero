@@ -1,0 +1,12 @@
+[package]
+name = "passero-core"
+version = "0.0.0"
+edition = "2021"
+
+[dependencies]
+sequoia-openpgp = { version = "2.3", default-features = false, features = ["crypto-rust", "allow-experimental-crypto", "allow-variable-time-crypto"] }
+git2 = "0.19"
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"

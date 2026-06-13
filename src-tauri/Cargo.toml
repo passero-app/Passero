@@ -32,6 +32,7 @@ url = "2"
 urlencoding = "2"
 image = "0.25"
 rqrr = "0.9"
+passero-core = { path = "../passero-core" }
 
 [dev-dependencies]
 tempfile = "3"
