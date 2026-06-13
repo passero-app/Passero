@@ -771,3 +771,33 @@ git commit -m "docs(ios): record M0 on-device findings and GO/NO-GO"
 ## Execution Handoff (after review)
 
 M1 (full read path), M2 (write path), M3 (UI integration + paid-program enrollment), M4 (family onboarding) are deliberately deferred to a follow-up plan written once this M0 gate returns GO.
+
+---
+
+## Amendments (post-implementation, 2026-06-13)
+
+### Progress
+- **Task 2** — DONE (`0f458bd`, hygiene `f162d2d`). `passero-core` skeleton + path dep; root `Cargo.toml` workspace added (members `passero-core`, `src-tauri`).
+- **Task 3** — DONE (`2bfef37`, fix `8a1216c`). Sequoia `crypto-rust` generate/encrypt/decrypt round-trips on host. Decrypt selector accepts transport- AND storage-encryption keys (so it can later read real GnuPG/`pass` stores).
+- **Task 4** — DONE (`30c6aa3`, fix `b7e58a7`). Store layout + git2 sync; 5/5 host tests green.
+- Tasks **1, 5, 6, 7** remain (device/Xcode/iPhone).
+
+### `sync` API changed — Task 5/6 must use the new signatures
+The thread-local token (`set_token`) was removed because it is invisible across Tauri's worker threads. `sync` now takes the PAT explicitly:
+```rust
+pub fn clone(url: &str, into: &Path, token: Option<&str>) -> Result<Repository>
+pub fn pull(repo: &Repository, token: Option<&str>) -> Result<()>
+pub fn push(repo: &Repository, token: Option<&str>) -> Result<()>
+pub fn commit_all(repo: &Repository, msg: &str) -> Result<()>   // unchanged
+```
+So when implementing Task 5/6:
+- Add a `token: Mutex<Option<String>>` field to `IosState`.
+- `clone_store(url, token, ...)` stores the PAT in state and calls `sync::clone(&url, &dir, Some(&token))`.
+- `git_pull` / `git_push` read the PAT from state and pass `token.as_deref()` to `sync::pull` / `sync::push`.
+- The credential callback now fails fast (returns `Err` on retry, honors `allowed_types`, no `Cred::username` HTTPS fallback) — so a wrong/missing PAT surfaces a clean error instead of hanging on-device.
+- Strip the illustrative `//` comments from the Task 5/6 code blocks when writing the real code (repo rule: no code comments).
+
+### Deferred to M1 (code-review findings, not blocking M0)
+- **pull is fast-forward-only and silently no-ops on diverged history** (`sync.rs`). Data-loss-class hazard for a password store — M1 must distinguish `is_up_to_date()` (clean Ok) from non-fast-forward (return a typed "diverged, needs resolution" error the UI surfaces). M0's controlled single-user test will not trigger it.
+- **Hardcoded `main` branch** in pull/push — M1 should resolve the remote's default branch.
+- **PAT zeroization** — token lives in memory un-zeroized; M1 should minimize residency (`secrecy`/`zeroize`).
