@@ -1,33 +1,39 @@
-use git2::{Repository, RemoteCallbacks, FetchOptions, PushOptions, Cred, Signature};
+use git2::{Repository, RemoteCallbacks, FetchOptions, PushOptions, Cred, CredentialType, Signature};
+use std::cell::Cell;
 use std::path::Path;
 use crate::Result;
 
-thread_local! { static TOKEN: std::cell::RefCell<Option<String>> = const { std::cell::RefCell::new(None) }; }
-
-pub fn set_token(token: Option<String>) { TOKEN.with(|t| *t.borrow_mut() = token); }
-
-fn callbacks<'a>() -> RemoteCallbacks<'a> {
+fn callbacks(token: Option<&str>) -> RemoteCallbacks<'_> {
+    let token = token.map(|t| t.to_string());
+    let attempts = Cell::new(0usize);
     let mut cb = RemoteCallbacks::new();
-    cb.credentials(|_url, username, _allowed| {
-        TOKEN.with(|t| match &*t.borrow() {
-            Some(tok) => Cred::userpass_plaintext("x-access-token", tok),
-            None => Cred::username(username.unwrap_or("git")),
-        })
+    cb.credentials(move |_url, _username, allowed| {
+        let attempt = attempts.get();
+        attempts.set(attempt + 1);
+        if attempt > 0 {
+            return Err(git2::Error::from_str("authentication failed"));
+        }
+        match &token {
+            Some(tok) if allowed.contains(CredentialType::USER_PASS_PLAINTEXT) => {
+                Cred::userpass_plaintext("x-access-token", tok)
+            }
+            _ => Err(git2::Error::from_str("no credentials available")),
+        }
     });
     cb
 }
 
-pub fn clone(url: &str, into: &Path) -> Result<Repository> {
+pub fn clone(url: &str, into: &Path, token: Option<&str>) -> Result<Repository> {
     let mut fo = FetchOptions::new();
-    fo.remote_callbacks(callbacks());
+    fo.remote_callbacks(callbacks(token));
     let mut builder = git2::build::RepoBuilder::new();
     builder.fetch_options(fo);
     Ok(builder.clone(url, into)?)
 }
 
-pub fn pull(repo: &Repository) -> Result<()> {
+pub fn pull(repo: &Repository, token: Option<&str>) -> Result<()> {
     let mut fo = FetchOptions::new();
-    fo.remote_callbacks(callbacks());
+    fo.remote_callbacks(callbacks(token));
     repo.find_remote("origin")?.fetch(&["main"], Some(&mut fo), None)?;
     let fetch_head = repo.refname_to_id("FETCH_HEAD")?;
     let commit = repo.find_annotated_commit(fetch_head)?;
@@ -56,9 +62,9 @@ pub fn commit_all(repo: &Repository, msg: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn push(repo: &Repository) -> Result<()> {
+pub fn push(repo: &Repository, token: Option<&str>) -> Result<()> {
     let mut po = PushOptions::new();
-    po.remote_callbacks(callbacks());
+    po.remote_callbacks(callbacks(token));
     repo.find_remote("origin")?
         .push(&["refs/heads/main:refs/heads/main"], Some(&mut po))?;
     Ok(())
