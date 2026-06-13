@@ -44,7 +44,7 @@
 <aside class="w-56 bg-zinc-950 border-r border-zinc-800 flex flex-col">
   <div class="p-4 pt-10 border-b border-zinc-800" data-tauri-drag-region>
     <h1 class="text-lg font-semibold tracking-tight">Passero</h1>
-    <p class="text-xs text-zinc-500">password-store</p>
+    <a href="https://passero.app" target="_blank" class="text-xs text-zinc-500 hover:text-zinc-300 transition-colors">passero.app</a>
   </div>
 
   <nav class="p-2 space-y-1">

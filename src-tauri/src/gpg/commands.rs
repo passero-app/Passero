@@ -327,6 +327,92 @@ pub async fn set_gpg_key_trust(
     Ok(())
 }
 
+/// Resolve a list of key IDs/fingerprints to full GpgKey info from the local keyring.
+#[tauri::command]
+pub async fn resolve_gpg_keys(app: tauri::AppHandle, key_ids: Vec<String>) -> Result<Vec<Option<GpgKey>>> {
+    let all_public = list_gpg_keys(app.clone()).await?;
+    let all_secret = list_gpg_secret_keys(app).await?;
+
+    Ok(key_ids
+        .iter()
+        .map(|id| {
+            all_public
+                .iter()
+                .find(|k| {
+                    k.id == *id
+                        || k.fingerprint == *id
+                        || k.id.ends_with(id)
+                        || id.ends_with(&k.id)
+                        || k.fingerprint.ends_with(id)
+                        || id.ends_with(&k.fingerprint)
+                })
+                .map(|k| {
+                    let mut key = k.clone();
+                    // Mark whether we have the secret key
+                    if all_secret.iter().any(|sk| sk.id == key.id) {
+                        key.trust = format!("{}+secret", key.trust);
+                    }
+                    key
+                })
+        })
+        .collect())
+}
+
+/// Search a keyserver for keys matching a query (email, name, or key ID).
+#[tauri::command]
+pub async fn search_gpg_keyserver(
+    app: tauri::AppHandle,
+    query: String,
+    keyserver: Option<String>,
+) -> Result<Vec<GpgKey>> {
+    let binary = gpg_binary(&app)?;
+    let server = keyserver.unwrap_or_else(|| "hkps://keys.openpgp.org".to_string());
+
+    let output = gpg_command(&binary)
+        .args([
+            "--batch",
+            "--keyserver",
+            &server,
+            "--search-keys",
+            "--with-colons",
+            &query,
+        ])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .await?;
+
+    // --search-keys outputs to stdout in colon format when --with-colons is used
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut keys = Vec::new();
+    let mut current_id = String::new();
+
+    for line in stdout.lines() {
+        let fields: Vec<&str> = line.split(':').collect();
+        if fields.len() < 2 {
+            continue;
+        }
+        match fields[0] {
+            "pub" => {
+                current_id = fields.get(4).unwrap_or(&"").to_string();
+            }
+            "uid" => {
+                let uid = fields.get(9).unwrap_or(&"").to_string();
+                if !current_id.is_empty() && !uid.is_empty() {
+                    keys.push(GpgKey {
+                        id: current_id.clone(),
+                        fingerprint: String::new(),
+                        uid,
+                        trust: String::new(),
+                    });
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(keys)
+}
+
 #[tauri::command]
 pub async fn delete_gpg_key(app: tauri::AppHandle, fingerprint: String, secret: bool) -> Result<()> {
     let binary = gpg_binary(&app)?;

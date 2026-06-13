@@ -155,6 +155,19 @@ export async function deleteGpgKey(
   return invoke("delete_gpg_key", { fingerprint, secret });
 }
 
+export async function resolveGpgKeys(
+  keyIds: string[],
+): Promise<(GpgKey | null)[]> {
+  return invoke("resolve_gpg_keys", { keyIds });
+}
+
+export async function searchGpgKeyserver(
+  query: string,
+  keyserver?: string,
+): Promise<GpgKey[]> {
+  return invoke("search_gpg_keyserver", { query, keyserver });
+}
+
 export async function getTotp(path: string): Promise<TotpCode> {
   return invoke("get_totp", { path });
 }

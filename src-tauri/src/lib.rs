@@ -53,6 +53,8 @@ pub fn run() {
             gpg::commands::publish_gpg_key,
             gpg::commands::set_gpg_key_trust,
             gpg::commands::delete_gpg_key,
+            gpg::commands::resolve_gpg_keys,
+            gpg::commands::search_gpg_keyserver,
             git::commands::git_pull,
             git::commands::git_push,
             git::commands::git_log,
