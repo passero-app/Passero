@@ -31,3 +31,29 @@ fn key_serializes_and_reloads() {
     let reloaded = crypto::cert_from_bytes(&secret_bytes).unwrap();
     assert_eq!(cert.fingerprint(), reloaded.fingerprint());
 }
+
+use passero_core::{store, sync};
+#[test]
+fn init_insert_list_show_against_local_bare_remote() {
+    let tmp = tempfile::tempdir().unwrap();
+    let bare = tmp.path().join("remote.git");
+    git2::Repository::init_bare(&bare).unwrap();
+
+    let work = tmp.path().join("store");
+    let (cert, _) = crypto::generate_key("me@passero.local").unwrap();
+
+    let repo = sync::clone(&format!("file://{}", bare.display()), &work).unwrap();
+    store::init(&work, &[cert.fingerprint().to_string()]).unwrap();
+    store::insert(&work, "email/fastmail", b"hunter2\nuser: me", &[cert.clone()]).unwrap();
+    sync::commit_all(&repo, "add fastmail").unwrap();
+    sync::push(&repo).unwrap();
+
+    let entries = store::list(&work).unwrap();
+    assert!(entries.iter().any(|e| e == "email/fastmail"));
+    let plaintext = store::show(&work, "email/fastmail", &cert).unwrap();
+    assert_eq!(plaintext, b"hunter2\nuser: me");
+
+    let work2 = tmp.path().join("store2");
+    sync::clone(&format!("file://{}", bare.display()), &work2).unwrap();
+    assert!(work2.join("email/fastmail.gpg").exists());
+}
