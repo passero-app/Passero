@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 sequoia-openpgp = { version = "2.3", default-features = false, features = ["crypto-rust", "allow-experimental-crypto", "allow-variable-time-crypto"] }
-git2 = "0.19"
+git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2", "https"] }
 thiserror = "2"
 
 [dev-dependencies]
