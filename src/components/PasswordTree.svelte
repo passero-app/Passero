@@ -18,6 +18,8 @@
       <div class="text-zinc-500 text-sm p-4">
         No matches for "{ui.searchQuery}"
       </div>
+    {:else if passwords.initialized}
+      <div class="text-zinc-500 text-sm p-4">No entries yet.</div>
     {:else}
       <EmptyStoreSetup />
     {/if}

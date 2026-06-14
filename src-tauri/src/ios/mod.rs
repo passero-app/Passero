@@ -83,6 +83,12 @@ pub struct DeviceKeyStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct SyncSettings {
+    pub repo_url: Option<String>,
+    pub has_pat: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct TotpInfo {
     pub issuer: Option<String>,
     pub account: Option<String>,
@@ -342,6 +348,7 @@ pub async fn load_key(
     let cert = cert_from_bytes(&bytes).map_err(|e| PasseroError::GpgError(e.to_string()))?;
     let fingerprint = cert.fingerprint().to_hex();
     *state.key_armored.lock().unwrap() = Some(bytes);
+    config::set_store_dir(&app, &store_dir(&state).to_string_lossy())?;
     if let Some(pat) = config::get_pat(&app)? {
         *state.token.lock().unwrap() = Some(pat);
     }
@@ -356,11 +363,46 @@ pub async fn clone_store(
     token: String,
 ) -> Result<()> {
     let dir = store_dir(&state);
+    let token = if token.is_empty() {
+        config::get_pat(&app)?.unwrap_or_default()
+    } else {
+        token
+    };
     *state.token.lock().unwrap() = Some(token.clone());
     sync::clone(&url, &dir, Some(&token)).map_err(|e| PasseroError::GitError(e.to_string()))?;
     let name = vault_name_from_url(&url);
-    config::register_cloned_vault(&app, &name, &dir.to_string_lossy(), &token)?;
+    config::register_cloned_vault(&app, &name, &dir.to_string_lossy(), &url, &token)?;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_sync_settings(app: tauri::AppHandle) -> Result<SyncSettings> {
+    Ok(SyncSettings {
+        repo_url: config::get_repo_url(&app)?,
+        has_pat: config::get_pat(&app)?.is_some(),
+    })
+}
+
+#[tauri::command]
+pub async fn set_sync_settings(
+    app: tauri::AppHandle,
+    state: State<'_, IosState>,
+    repo_url: Option<String>,
+    pat: Option<String>,
+) -> Result<()> {
+    config::set_sync_settings(&app, repo_url, pat)?;
+    if let Some(token) = config::get_pat(&app)? {
+        *state.token.lock().unwrap() = Some(token);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn store_initialized(state: State<'_, IosState>) -> Result<bool> {
+    let dir = store_dir(&state);
+    Ok(store::recipients_for(&dir, "")
+        .map(|r| !r.is_empty())
+        .unwrap_or(false))
 }
 
 fn vault_name_from_url(url: &str) -> String {

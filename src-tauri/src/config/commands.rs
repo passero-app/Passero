@@ -37,6 +37,9 @@ fn load_config(app: &tauri::AppHandle) -> Result<(AppConfig, std::sync::Arc<taur
         pat: store
             .get("pat")
             .and_then(|v: serde_json::Value| v.as_str().map(String::from)),
+        repo_url: store
+            .get("repo_url")
+            .and_then(|v: serde_json::Value| v.as_str().map(String::from)),
     };
 
     Ok((config, store))
@@ -83,6 +86,11 @@ fn save_config(
     } else {
         store.delete("pat");
     }
+    if let Some(ref v) = config.repo_url {
+        store.set("repo_url", serde_json::json!(v));
+    } else {
+        store.delete("repo_url");
+    }
 
     store
         .save()
@@ -113,15 +121,44 @@ pub(crate) fn get_pat(app: &tauri::AppHandle) -> Result<Option<String>> {
     Ok(config.pat)
 }
 
+pub(crate) fn get_repo_url(app: &tauri::AppHandle) -> Result<Option<String>> {
+    let (config, _store) = load_config(app)?;
+    Ok(config.repo_url)
+}
+
+pub(crate) fn set_sync_settings(
+    app: &tauri::AppHandle,
+    repo_url: Option<String>,
+    pat: Option<String>,
+) -> Result<()> {
+    let (mut config, store) = load_config(app)?;
+    config.repo_url = repo_url.filter(|s| !s.is_empty());
+    if let Some(token) = pat.filter(|s| !s.is_empty()) {
+        config.pat = Some(token);
+    }
+    save_config(&store, &config)
+}
+
+pub(crate) fn set_store_dir(app: &tauri::AppHandle, path: &str) -> Result<()> {
+    let (mut config, store) = load_config(app)?;
+    if config.password_store_dir.as_deref() != Some(path) {
+        config.password_store_dir = Some(path.to_string());
+        save_config(&store, &config)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn register_cloned_vault(
     app: &tauri::AppHandle,
     name: &str,
     path: &str,
+    url: &str,
     pat: &str,
 ) -> Result<()> {
     let (mut config, store) = load_config(app)?;
 
     config.pat = Some(pat.to_string());
+    config.repo_url = Some(url.to_string());
     config.password_store_dir = Some(path.to_string());
 
     let id = match config.vaults.iter().find(|v| v.path == path) {
@@ -151,6 +188,7 @@ pub(crate) fn reset_device_config(app: &tauri::AppHandle) -> Result<()> {
     let (mut config, store) = load_config(app)?;
     config.device_key_fingerprint = None;
     config.pat = None;
+    config.repo_url = None;
     config.vaults.clear();
     config.active_vault_id = None;
     config.password_store_dir = None;

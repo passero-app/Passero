@@ -21,9 +21,6 @@
   let email = $state("");
   let fingerprint = $state<string | null>(null);
 
-  let vaultUrl = $state("");
-  let pat = $state("");
-
   $effect(() => {
     checkStatus()
       .then((s) => {
@@ -73,25 +70,6 @@
     }
   }
 
-  async function cloneAndInit() {
-    if (!fingerprint) {
-      error = "Generate a key first.";
-      return;
-    }
-    busy = true;
-    error = null;
-    status = null;
-    try {
-      await invoke("clone_store", { url: vaultUrl, token: pat });
-      await invoke("init_store", { fingerprints: [fingerprint] });
-      status = "Vault cloned and initialized.";
-    } catch (e) {
-      error = String(e);
-    } finally {
-      busy = false;
-    }
-  }
-
   async function unlock() {
     busy = true;
     error = null;
@@ -124,8 +102,6 @@
       await invoke("reset_device");
       hasKey = false;
       fingerprint = null;
-      vaultUrl = "";
-      pat = "";
       confirmingReset = false;
       status = "Device reset. Start fresh below.";
     } catch (e) {
@@ -224,28 +200,6 @@
         {#if fingerprint}
           <p class="break-all text-xs text-zinc-400">Fingerprint: {fingerprint}</p>
         {/if}
-      </section>
-
-      <section class="space-y-3">
-        <h2 class="text-sm font-medium text-zinc-300">Test vault (optional)</h2>
-        <input
-          class="w-full rounded bg-zinc-800 px-3 py-2 text-sm"
-          placeholder="HTTPS clone URL"
-          bind:value={vaultUrl}
-        />
-        <input
-          class="w-full rounded bg-zinc-800 px-3 py-2 text-sm"
-          placeholder="GitHub PAT"
-          type="password"
-          bind:value={pat}
-        />
-        <button
-          class="w-full rounded bg-zinc-700 px-3 py-2 text-sm font-medium disabled:opacity-50"
-          disabled={busy || !vaultUrl || !pat}
-          onclick={cloneAndInit}
-        >
-          Clone and initialize
-        </button>
       </section>
     {/if}
   </div>
