@@ -9,6 +9,7 @@ use tauri::State;
 use totp_rs::TOTP;
 use url::Url;
 
+use crate::config::commands as config;
 use crate::error::{PasseroError, Result};
 use passero_core::crypto::{cert_from_bytes, generate_key, Cert};
 use passero_core::{store, sync};
@@ -73,6 +74,12 @@ pub struct TotpCode {
 pub struct GeneratedKey {
     pub fingerprint: String,
     pub armored: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct DeviceKeyStatus {
+    pub has_key: bool,
+    pub fingerprint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -263,12 +270,14 @@ pub async fn init_password_store(state: State<'_, IosState>, gpg_ids: Vec<String
 
 #[tauri::command]
 pub async fn generate_in_app_key(
+    app: tauri::AppHandle,
     state: State<'_, IosState>,
     user_id: String,
 ) -> Result<GeneratedKey> {
     let (cert, armored_bytes) = generate_key(&user_id).map_err(|e| PasseroError::GpgError(e.to_string()))?;
     let fingerprint = cert.fingerprint().to_hex();
     *state.key_armored.lock().unwrap() = Some(armored_bytes.clone());
+    config::set_device_key_fingerprint(&app, &fingerprint)?;
     let armored = String::from_utf8(armored_bytes)
         .map_err(|e| PasseroError::GpgError(format!("armored key is not valid UTF-8: {e}")))?;
     Ok(GeneratedKey {
@@ -278,16 +287,52 @@ pub async fn generate_in_app_key(
 }
 
 #[tauri::command]
-pub async fn load_key(state: State<'_, IosState>, armored: String) -> Result<String> {
+pub async fn device_key_status(app: tauri::AppHandle) -> Result<DeviceKeyStatus> {
+    let fingerprint = config::get_device_key_fingerprint(&app)?;
+    Ok(DeviceKeyStatus {
+        has_key: fingerprint.is_some(),
+        fingerprint,
+    })
+}
+
+#[tauri::command]
+pub async fn reset_device(app: tauri::AppHandle, state: State<'_, IosState>) -> Result<()> {
+    config::reset_device_config(&app)?;
+    let dir = store_dir(&state);
+    if dir.exists() {
+        for entry in std::fs::read_dir(&dir)? {
+            let path = entry?.path();
+            if path.is_dir() {
+                std::fs::remove_dir_all(&path)?;
+            } else {
+                std::fs::remove_file(&path)?;
+            }
+        }
+    }
+    *state.key_armored.lock().unwrap() = None;
+    *state.token.lock().unwrap() = None;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn load_key(
+    app: tauri::AppHandle,
+    state: State<'_, IosState>,
+    armored: String,
+) -> Result<String> {
     let bytes = armored.into_bytes();
     let cert = cert_from_bytes(&bytes).map_err(|e| PasseroError::GpgError(e.to_string()))?;
     let fingerprint = cert.fingerprint().to_hex();
     *state.key_armored.lock().unwrap() = Some(bytes);
+    if let Some(pat) = config::get_pat(&app)? {
+        *state.token.lock().unwrap() = Some(pat);
+    }
     Ok(fingerprint)
 }
 
 #[tauri::command]
 pub async fn clone_store(
+    app: tauri::AppHandle,
     state: State<'_, IosState>,
     url: String,
     token: String,
@@ -295,7 +340,19 @@ pub async fn clone_store(
     let dir = store_dir(&state);
     *state.token.lock().unwrap() = Some(token.clone());
     sync::clone(&url, &dir, Some(&token)).map_err(|e| PasseroError::GitError(e.to_string()))?;
+    let name = vault_name_from_url(&url);
+    config::register_cloned_vault(&app, &name, &dir.to_string_lossy(), &token)?;
     Ok(())
+}
+
+fn vault_name_from_url(url: &str) -> String {
+    url.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .map(|s| s.trim_end_matches(".git"))
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Vault")
+        .to_string()
 }
 
 #[tauri::command]
@@ -324,6 +381,7 @@ pub async fn get_store_gpg_id(state: State<'_, IosState>) -> Result<String> {
 
 #[tauri::command]
 pub async fn generate_gpg_key(
+    app: tauri::AppHandle,
     state: State<'_, IosState>,
     params: GenerateKeyParams,
 ) -> Result<String> {
@@ -332,7 +390,7 @@ pub async fn generate_gpg_key(
     } else {
         format!("{} <{}>", params.name, params.email)
     };
-    let generated = generate_in_app_key(state, user_id).await?;
+    let generated = generate_in_app_key(app, state, user_id).await?;
     Ok(generated.fingerprint)
 }
 
