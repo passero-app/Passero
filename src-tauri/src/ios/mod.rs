@@ -97,6 +97,24 @@ fn token(state: &State<'_, IosState>) -> Option<String> {
     state.token.lock().unwrap().clone()
 }
 
+fn device_gpg_key(state: &State<'_, IosState>) -> Option<GpgKey> {
+    let guard = state.key_armored.lock().unwrap();
+    let bytes = guard.as_ref()?;
+    let cert = cert_from_bytes(bytes).ok()?;
+    let fingerprint = cert.fingerprint().to_hex();
+    let uid = cert
+        .userids()
+        .next()
+        .map(|u| String::from_utf8_lossy(u.userid().value()).into_owned())
+        .unwrap_or_else(|| fingerprint.clone());
+    Some(GpgKey {
+        id: fingerprint.clone(),
+        fingerprint,
+        uid,
+        trust: "ultimate".to_string(),
+    })
+}
+
 fn loaded_cert(state: &State<'_, IosState>) -> Result<Cert> {
     let guard = state.key_armored.lock().unwrap();
     let bytes = guard
@@ -362,13 +380,13 @@ pub async fn init_store(state: State<'_, IosState>, fingerprints: Vec<String>) -
 }
 
 #[tauri::command]
-pub async fn list_gpg_keys(_state: State<'_, IosState>) -> Result<Vec<GpgKey>> {
-    Ok(vec![])
+pub async fn list_gpg_keys(state: State<'_, IosState>) -> Result<Vec<GpgKey>> {
+    Ok(device_gpg_key(&state).into_iter().collect())
 }
 
 #[tauri::command]
-pub async fn list_gpg_secret_keys(_state: State<'_, IosState>) -> Result<Vec<GpgKey>> {
-    Ok(vec![])
+pub async fn list_gpg_secret_keys(state: State<'_, IosState>) -> Result<Vec<GpgKey>> {
+    Ok(device_gpg_key(&state).into_iter().collect())
 }
 
 #[tauri::command]
@@ -446,10 +464,16 @@ pub async fn delete_gpg_key(
 
 #[tauri::command]
 pub async fn resolve_gpg_keys(
-    _state: State<'_, IosState>,
+    state: State<'_, IosState>,
     key_ids: Vec<String>,
 ) -> Result<Vec<Option<GpgKey>>> {
-    Ok(key_ids.iter().map(|_| None).collect())
+    let device = device_gpg_key(&state);
+    Ok(key_ids
+        .iter()
+        .map(|id| {
+            device.as_ref().filter(|k| &k.id == id || &k.fingerprint == id).cloned()
+        })
+        .collect())
 }
 
 #[tauri::command]
