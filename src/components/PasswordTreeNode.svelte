@@ -17,7 +17,7 @@
 
 <div>
   <button
-    class="w-full text-left px-2 py-1 rounded text-sm transition-colors flex items-center gap-1.5
+    class="w-full text-left px-2 py-3 min-h-[44px] md:py-1 md:min-h-0 rounded text-base md:text-sm transition-colors flex items-center gap-1.5
       {!entry.is_dir && passwords.selectedPath === entry.path
         ? 'bg-zinc-700 text-white'
         : 'text-zinc-300 hover:bg-zinc-800 hover:text-white'}"

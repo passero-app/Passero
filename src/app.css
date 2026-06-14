@@ -51,3 +51,16 @@ select {
 .no-drag {
   -webkit-app-region: no-drag;
 }
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility momentum-scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
