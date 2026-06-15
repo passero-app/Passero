@@ -28,18 +28,71 @@ fn current_branch(repo: &Repository) -> String {
 }
 
 pub fn clone(url: &str, into: &Path, token: Option<&str>) -> Result<Repository> {
-    if Repository::open(into).is_ok() {
-        return Ok(Repository::open(into)?);
+    if let Ok(repo) = Repository::open(into) {
+        return Ok(repo);
     }
-    let mut fo = FetchOptions::new();
-    fo.remote_callbacks(callbacks(token));
-    let mut builder = git2::build::RepoBuilder::new();
-    builder.fetch_options(fo);
-    let repo = builder.clone(url, into)?;
-    if repo.head().is_err() {
-        repo.set_head("refs/heads/main")?;
+
+    let repo = Repository::init(into)?;
+    repo.remote_delete("origin").ok();
+    repo.remote("origin", url)?;
+
+    let default_branch = {
+        let mut remote = repo.find_remote("origin")?;
+        let mut fo = FetchOptions::new();
+        fo.remote_callbacks(callbacks(token));
+        remote.fetch(&["+refs/heads/*:refs/remotes/origin/*"], Some(&mut fo), None)?;
+        remote_default_branch(&repo, &mut remote, token)
+    };
+    let fetched = default_branch
+        .as_ref()
+        .and_then(|b| repo.refname_to_id(&format!("refs/remotes/origin/{b}")).ok());
+
+    match (default_branch, fetched) {
+        (Some(branch), Some(oid)) => {
+            let commit = repo.find_commit(oid)?;
+            let local_ref = format!("refs/heads/{branch}");
+            if repo.find_reference(&local_ref).is_err() {
+                repo.branch(&branch, &commit, true)?;
+            }
+            repo.set_head(&local_ref)?;
+            repo.checkout_head(Some(git2::build::CheckoutBuilder::new().force()))?;
+        }
+        _ => {
+            repo.set_head("refs/heads/main")?;
+        }
     }
+
     Ok(repo)
+}
+
+fn remote_default_branch(
+    repo: &Repository,
+    remote: &mut git2::Remote<'_>,
+    token: Option<&str>,
+) -> Option<String> {
+    if remote
+        .connect_auth(git2::Direction::Fetch, Some(callbacks(token)), None)
+        .is_ok()
+    {
+        let head = remote
+            .default_branch()
+            .ok()
+            .and_then(|buf| buf.as_str().map(String::from))
+            .and_then(|name| name.rsplit('/').next().map(String::from));
+        remote.disconnect().ok();
+        if let Some(branch) = head {
+            return Some(branch);
+        }
+    }
+    for candidate in ["main", "master"] {
+        if repo
+            .refname_to_id(&format!("refs/remotes/origin/{candidate}"))
+            .is_ok()
+        {
+            return Some(candidate.to_string());
+        }
+    }
+    None
 }
 
 pub fn pull(repo: &Repository, token: Option<&str>) -> Result<()> {

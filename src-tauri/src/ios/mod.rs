@@ -405,6 +405,12 @@ pub async fn store_initialized(state: State<'_, IosState>) -> Result<bool> {
         .unwrap_or(false))
 }
 
+#[tauri::command]
+pub async fn store_is_repo(state: State<'_, IosState>) -> Result<bool> {
+    let dir = store_dir(&state);
+    Ok(git2::Repository::open(&dir).is_ok())
+}
+
 fn vault_name_from_url(url: &str) -> String {
     url.trim_end_matches('/')
         .rsplit('/')

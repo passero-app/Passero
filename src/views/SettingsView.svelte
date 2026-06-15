@@ -11,6 +11,7 @@
     getConfig,
     gitPull,
     gitPush,
+    storeIsRepo,
   } from "$lib/commands";
 
   let repoUrl = $state("");
@@ -18,6 +19,7 @@
   let hasPat = $state(false);
   let storePath = $state("");
   let fingerprint = $state<string | null>(null);
+  let isRepo = $state(false);
   let syncBusy = $state(false);
   let syncError = $state<string | null>(null);
 
@@ -35,6 +37,7 @@
       storePath = await getPasswordStorePath();
       const cfg = await getConfig();
       fingerprint = cfg.device_key_fingerprint ?? null;
+      isRepo = await storeIsRepo();
     } catch (e) {
       syncError = String(e);
     }
@@ -61,7 +64,7 @@
     try {
       await setSyncSettings(repoUrl || null, patInput || null);
       patInput = "";
-      if (passwords.initialized) {
+      if (isRepo) {
         await gitPull();
         await gitPush();
         ui.notify("Synced with remote");
@@ -71,6 +74,7 @@
           throw new Error("Set a repository URL first.");
         }
         await cloneStore(s.repo_url, "");
+        isRepo = await storeIsRepo();
         ui.notify("Repository cloned");
       }
       await passwords.refresh();
@@ -132,7 +136,7 @@
           disabled={syncBusy || !repoUrl}
           onclick={cloneOrSync}
         >
-          {passwords.initialized ? "Pull / Push" : "Clone"}
+          {isRepo ? "Pull / Push" : "Clone"}
         </button>
       </div>
       <div class="text-xs text-zinc-500 space-y-1 break-all">

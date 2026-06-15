@@ -106,6 +106,10 @@ export async function storeInitialized(): Promise<boolean> {
   return invoke("store_initialized");
 }
 
+export async function storeIsRepo(): Promise<boolean> {
+  return invoke("store_is_repo");
+}
+
 export async function listRecipients(): Promise<string[]> {
   return invoke("list_recipients");
 }

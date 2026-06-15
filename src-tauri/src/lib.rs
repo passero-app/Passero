@@ -116,6 +116,7 @@ pub fn run() {
             ios::get_sync_settings,
             ios::set_sync_settings,
             ios::store_initialized,
+            ios::store_is_repo,
             ios::init_store,
             ios::list_gpg_keys,
             ios::list_gpg_secret_keys,
