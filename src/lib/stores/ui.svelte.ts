@@ -5,10 +5,12 @@ class UiStore {
   searchQuery = $state("");
   showEditor = $state(false);
   showGenerator = $state(false);
+  mobileMenuOpen = $state(false);
   notification = $state<{ message: string; type: "success" | "error" } | null>(null);
 
   navigate(view: View) {
     this.currentView = view;
+    this.mobileMenuOpen = false;
   }
 
   notify(message: string, type: "success" | "error" = "success") {

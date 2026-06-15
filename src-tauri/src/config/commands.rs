@@ -31,6 +31,15 @@ fn load_config(app: &tauri::AppHandle) -> Result<(AppConfig, std::sync::Arc<taur
         active_vault_id: store
             .get("active_vault_id")
             .and_then(|v: serde_json::Value| v.as_str().map(String::from)),
+        device_key_fingerprint: store
+            .get("device_key_fingerprint")
+            .and_then(|v: serde_json::Value| v.as_str().map(String::from)),
+        pat: store
+            .get("pat")
+            .and_then(|v: serde_json::Value| v.as_str().map(String::from)),
+        repo_url: store
+            .get("repo_url")
+            .and_then(|v: serde_json::Value| v.as_str().map(String::from)),
     };
 
     Ok((config, store))
@@ -67,6 +76,21 @@ fn save_config(
     } else {
         store.delete("active_vault_id");
     }
+    if let Some(ref v) = config.device_key_fingerprint {
+        store.set("device_key_fingerprint", serde_json::json!(v));
+    } else {
+        store.delete("device_key_fingerprint");
+    }
+    if let Some(ref v) = config.pat {
+        store.set("pat", serde_json::json!(v));
+    } else {
+        store.delete("pat");
+    }
+    if let Some(ref v) = config.repo_url {
+        store.set("repo_url", serde_json::json!(v));
+    } else {
+        store.delete("repo_url");
+    }
 
     store
         .save()
@@ -79,6 +103,96 @@ fn save_config(
 pub(crate) fn get_effective_store_dir(app: &tauri::AppHandle) -> Result<Option<String>> {
     let (config, _store) = load_config(app)?;
     Ok(config.effective_store_dir().map(String::from))
+}
+
+pub(crate) fn set_device_key_fingerprint(app: &tauri::AppHandle, fingerprint: &str) -> Result<()> {
+    let (mut config, store) = load_config(app)?;
+    config.device_key_fingerprint = Some(fingerprint.to_string());
+    save_config(&store, &config)
+}
+
+pub(crate) fn get_device_key_fingerprint(app: &tauri::AppHandle) -> Result<Option<String>> {
+    let (config, _store) = load_config(app)?;
+    Ok(config.device_key_fingerprint)
+}
+
+pub(crate) fn get_pat(app: &tauri::AppHandle) -> Result<Option<String>> {
+    let (config, _store) = load_config(app)?;
+    Ok(config.pat)
+}
+
+pub(crate) fn get_repo_url(app: &tauri::AppHandle) -> Result<Option<String>> {
+    let (config, _store) = load_config(app)?;
+    Ok(config.repo_url)
+}
+
+pub(crate) fn set_sync_settings(
+    app: &tauri::AppHandle,
+    repo_url: Option<String>,
+    pat: Option<String>,
+) -> Result<()> {
+    let (mut config, store) = load_config(app)?;
+    config.repo_url = repo_url.filter(|s| !s.is_empty());
+    if let Some(token) = pat.filter(|s| !s.is_empty()) {
+        config.pat = Some(token);
+    }
+    save_config(&store, &config)
+}
+
+pub(crate) fn set_store_dir(app: &tauri::AppHandle, path: &str) -> Result<()> {
+    let (mut config, store) = load_config(app)?;
+    if config.password_store_dir.as_deref() != Some(path) {
+        config.password_store_dir = Some(path.to_string());
+        save_config(&store, &config)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn register_cloned_vault(
+    app: &tauri::AppHandle,
+    name: &str,
+    path: &str,
+    url: &str,
+    pat: &str,
+) -> Result<()> {
+    let (mut config, store) = load_config(app)?;
+
+    config.pat = Some(pat.to_string());
+    config.repo_url = Some(url.to_string());
+    config.password_store_dir = Some(path.to_string());
+
+    let id = match config.vaults.iter().find(|v| v.path == path) {
+        Some(existing) => existing.id.clone(),
+        None => {
+            let id = format!(
+                "vault_{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis()
+            );
+            config.vaults.push(Vault {
+                id: id.clone(),
+                name: name.to_string(),
+                path: path.to_string(),
+            });
+            id
+        }
+    };
+    config.active_vault_id = Some(id);
+
+    save_config(&store, &config)
+}
+
+pub(crate) fn reset_device_config(app: &tauri::AppHandle) -> Result<()> {
+    let (mut config, store) = load_config(app)?;
+    config.device_key_fingerprint = None;
+    config.pat = None;
+    config.repo_url = None;
+    config.vaults.clear();
+    config.active_vault_id = None;
+    config.password_store_dir = None;
+    save_config(&store, &config)
 }
 
 #[tauri::command]

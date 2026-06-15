@@ -13,6 +13,13 @@ export interface AppConfig {
   clipboard_timeout: number;
   vaults: Vault[];
   active_vault_id: string | null;
+  repo_url?: string | null;
+  device_key_fingerprint?: string | null;
+}
+
+export interface SyncSettings {
+  repo_url: string | null;
+  has_pat: boolean;
 }
 
 export interface GpgKey {

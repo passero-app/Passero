@@ -1,4 +1,4 @@
-import { listPasswords, showPassword } from "$lib/commands";
+import { listPasswords, showPassword, getStoreGpgId } from "$lib/commands";
 import type { PasswordEntry } from "$lib/types";
 import { parsePasswordContent } from "$lib/utils";
 
@@ -8,6 +8,7 @@ class PasswordStore {
   selectedContent = $state<string | null>(null);
   loading = $state(false);
   error = $state<string | null>(null);
+  initialized = $state(false);
 
   parsedContent = $derived.by(() => {
     if (!this.selectedContent) return null;
@@ -23,6 +24,12 @@ class PasswordStore {
       this.error = String(e);
     } finally {
       this.loading = false;
+    }
+    try {
+      const gpgId = await getStoreGpgId();
+      this.initialized = gpgId.trim().length > 0;
+    } catch {
+      this.initialized = false;
     }
   }
 

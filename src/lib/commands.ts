@@ -7,6 +7,7 @@ import type {
   TotpCode,
   TotpInfo,
   Vault,
+  SyncSettings,
 } from "./types";
 
 export async function listPasswords(): Promise<PasswordEntry[]> {
@@ -84,6 +85,29 @@ export async function setConfig(config: AppConfig): Promise<void> {
 
 export async function getPasswordStorePath(): Promise<string> {
   return invoke("get_password_store_path");
+}
+
+export async function getSyncSettings(): Promise<SyncSettings> {
+  return invoke("get_sync_settings");
+}
+
+export async function setSyncSettings(
+  repoUrl: string | null,
+  pat: string | null,
+): Promise<void> {
+  return invoke("set_sync_settings", { repoUrl, pat });
+}
+
+export async function cloneStore(url: string, token: string): Promise<void> {
+  return invoke("clone_store", { url, token });
+}
+
+export async function storeInitialized(): Promise<boolean> {
+  return invoke("store_initialized");
+}
+
+export async function storeIsRepo(): Promise<boolean> {
+  return invoke("store_is_repo");
 }
 
 export async function listRecipients(): Promise<string[]> {

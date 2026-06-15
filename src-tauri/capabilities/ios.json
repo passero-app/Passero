@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/mobile-schema.json",
+  "identifier": "ios-keystore-biometric",
+  "description": "iOS-only keystore and biometric permissions",
+  "platforms": ["iOS"],
+  "windows": ["main"],
+  "permissions": [
+    "keystore:default",
+    "biometric:default"
+  ]
+}

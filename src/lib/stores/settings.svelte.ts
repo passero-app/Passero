@@ -10,6 +10,7 @@ class SettingsStore {
     clipboard_timeout: 45,
     vaults: [],
     active_vault_id: null,
+    repo_url: null,
   });
   loading = $state(false);
   error = $state<string | null>(null);
