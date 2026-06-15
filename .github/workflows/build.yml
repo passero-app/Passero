@@ -34,20 +34,9 @@ jobs:
       tag: ${{ steps.calver.outputs.tag }}
     steps:
       - id: calver
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
         run: |
-          YY=$(date -u +%y)
-          MM=$(date -u +%m)
-          BASE="${YY}.${MM}"
-
-          # Find next available build number for this month
-          N=1
-          while gh release view "v${BASE}.${N}" >/dev/null 2>&1; do
-            N=$((N + 1))
-          done
-          VERSION="${BASE}.${N}"
+          export TZ='America/New_York'
+          VERSION="$(date +%y).$(date +%-m).$(date +%-d)"
 
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
