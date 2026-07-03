@@ -26,6 +26,27 @@ pub enum PollResult {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Repo {
+    pub full_name: String,
+    pub clone_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct Installations {
+    installations: Vec<Installation>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Installation {
+    id: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct InstallationRepos {
+    repositories: Vec<Repo>,
+}
+
+#[derive(Debug, Deserialize)]
 struct TokenOrError {
     error: Option<String>,
     access_token: Option<String>,
@@ -74,6 +95,35 @@ pub fn poll_once(base: &str, client_id: &str, device_code: &str) -> Result<PollR
             expires_in: resp.expires_in,
         })),
     }
+}
+
+pub fn list_accessible_repos(api_base: &str, token: &str) -> Result<Vec<Repo>> {
+    let installations: Installations = api_get(&format!("{api_base}/user/installations"), token)?;
+    let mut repos = Vec::new();
+    for installation in installations.installations {
+        let page: InstallationRepos = api_get(
+            &format!(
+                "{api_base}/user/installations/{}/repositories",
+                installation.id
+            ),
+            token,
+        )?;
+        repos.extend(page.repositories);
+    }
+    Ok(repos)
+}
+
+fn api_get<T: serde::de::DeserializeOwned>(url: &str, token: &str) -> Result<T> {
+    agent()
+        .get(url)
+        .query("per_page", "100")
+        .set("Authorization", &format!("Bearer {token}"))
+        .set("Accept", "application/vnd.github+json")
+        .set("X-GitHub-Api-Version", "2022-11-28")
+        .call()
+        .map_err(|e| CoreError::Http(e.to_string()))?
+        .into_json()
+        .map_err(|e| CoreError::Http(e.to_string()))
 }
 
 pub fn refresh(base: &str, client_id: &str, refresh_token: &str) -> Result<Token> {

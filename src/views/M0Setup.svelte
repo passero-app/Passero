@@ -30,6 +30,9 @@
   let verificationUri = $state("");
   let codeCopied = $state(false);
   let repoUrl = $state("");
+  let repos = $state<{ fullName: string; cloneUrl: string }[]>([]);
+  let reposLoading = $state(false);
+  let reposError = $state<string | null>(null);
   let showAdvanced = $state(false);
   let patInput = $state("");
   let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -139,9 +142,25 @@
       repoUrl = s.repo_url ?? "";
       if (s.has_pat) {
         ghState = "authorized";
+        loadRepos();
       }
     } catch (e) {
       ghError = String(e);
+    }
+  }
+
+  async function loadRepos() {
+    reposLoading = true;
+    reposError = null;
+    try {
+      repos = await invoke<{ fullName: string; cloneUrl: string }[]>(
+        "github_list_repos",
+      );
+    } catch (e) {
+      repos = [];
+      reposError = String(e);
+    } finally {
+      reposLoading = false;
     }
   }
 
@@ -167,6 +186,7 @@
         stopPolling();
         ghState = "authorized";
         status = "GitHub connected.";
+        loadRepos();
       }
     } catch (e) {
       stopPolling();
@@ -209,6 +229,8 @@
       await invoke("github_logout");
       ghState = "idle";
       userCode = "";
+      repos = [];
+      reposError = null;
       status = "Signed out of GitHub.";
     } catch (e) {
       ghError = String(e);
@@ -246,6 +268,7 @@
       showAdvanced = false;
       ghState = "authorized";
       status = "Token saved.";
+      loadRepos();
     } catch (e) {
       ghError = String(e);
     } finally {
@@ -364,6 +387,29 @@
               Sign out
             </button>
           </div>
+          {#if reposLoading}
+            <p class="text-sm text-zinc-400">Loading repositories…</p>
+          {:else if repos.length > 0}
+            <div class="space-y-2">
+              {#each repos as repo (repo.fullName)}
+                <button
+                  class="w-full rounded px-3 py-2 text-left text-sm font-medium disabled:opacity-50 {repoUrl ===
+                  repo.cloneUrl
+                    ? 'border border-emerald-500 bg-emerald-900/40'
+                    : 'bg-zinc-700'}"
+                  disabled={busy}
+                  onclick={() => (repoUrl = repo.cloneUrl)}
+                >
+                  {repo.fullName}
+                </button>
+              {/each}
+            </div>
+            <p class="text-xs text-zinc-500">or enter a URL manually</p>
+          {:else if reposError}
+            <p class="text-xs text-zinc-500">
+              Couldn't list repositories: {reposError}
+            </p>
+          {/if}
           <input
             class="w-full rounded bg-zinc-800 px-3 py-2 text-sm"
             placeholder="https://github.com/you/store.git"

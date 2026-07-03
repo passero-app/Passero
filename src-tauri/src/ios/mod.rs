@@ -17,6 +17,7 @@ use passero_core::{store, sync};
 
 const GITHUB_CLIENT_ID: &str = "Iv23litEb2DKDwJNLkVX";
 const GITHUB_BASE: &str = "https://github.com";
+const GITHUB_API_BASE: &str = "https://api.github.com";
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct GithubAuth {
@@ -246,6 +247,18 @@ pub async fn github_login_poll(
             Ok("authorized".into())
         }
     }
+}
+
+#[tauri::command]
+pub async fn github_list_repos(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>> {
+    let token = get_valid_token(&app)?
+        .ok_or_else(|| PasseroError::GitError("not signed in to GitHub".into()))?;
+    let repos = passero_core::github::list_accessible_repos(GITHUB_API_BASE, &token)
+        .map_err(|e| PasseroError::GitError(e.to_string()))?;
+    Ok(repos
+        .into_iter()
+        .map(|r| serde_json::json!({"fullName": r.full_name, "cloneUrl": r.clone_url}))
+        .collect())
 }
 
 #[tauri::command]

@@ -120,6 +120,7 @@ pub fn run() {
             ios::github_login_start,
             ios::github_login_poll,
             ios::github_logout,
+            ios::github_list_repos,
             ios::store_initialized,
             ios::store_is_repo,
             ios::init_store,
