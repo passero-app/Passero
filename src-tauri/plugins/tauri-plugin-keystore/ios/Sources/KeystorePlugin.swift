@@ -90,6 +90,11 @@ class KeystorePlugin: Plugin {
       var item: CFTypeRef?
       let status = SecItemCopyMatching(query as CFDictionary, &item)
 
+      if status == errSecItemNotFound {
+          invoke.resolve(["value": NSNull()])
+          return
+      }
+
       guard status == errSecSuccess else {
           throw keychainError(status)
       }
