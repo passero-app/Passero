@@ -11,6 +11,9 @@
 #     the app as a static lib, so the final link is done by xcodebuild, which does
 #     not auto-link these on iOS. Without them the link fails with undefined
 #     symbols (_iconv_open, _inflate, ...).
+#   - PATH export in the 'Build Rust Code' script phase
+#     Xcode GUI runs script phases with a minimal PATH, so npm/cargo (Homebrew,
+#     rustup) are not found and the phase fails with "npm: command not found".
 #
 # The NSFaceIDUsageDescription Info.plist key is handled natively via
 # src-tauri/Info.ios.plist (Tauri merges it automatically) and needs no patch here.
@@ -31,6 +34,15 @@ else
     's/\(EXCLUDED_ARCHS\[sdk=iphoneos\*\]: x86_64\)/\1\n        OTHER_LDFLAGS: $(inherited) -liconv -lz/' \
     "$PROJ"
   echo "Added OTHER_LDFLAGS (-liconv -lz) to $PROJ"
+fi
+
+if grep -q "script: export PATH=" "$PROJ"; then
+  echo "PATH export already present in Build Rust Code phase; nothing to patch."
+else
+  sed -i '' \
+    's|script: npm run -- tauri ios xcode-script|script: export PATH="/opt/homebrew/opt/rustup/bin:/opt/homebrew/bin:$HOME/.cargo/bin:$PATH"; npm run -- tauri ios xcode-script|' \
+    "$PROJ"
+  echo "Added PATH export to Build Rust Code script phase in $PROJ"
 fi
 
 ( cd gen/apple && xcodegen generate )
