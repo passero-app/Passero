@@ -6,45 +6,56 @@ import WebKit
 import LocalAuthentication
 
 class StoreRequest: Decodable {
+  let service: String
+  let user: String
   let value: String
+  let biometric: Bool?
+}
+
+class ItemRequest: Decodable {
+  let service: String
+  let user: String
 }
 
 class KeystorePlugin: Plugin {
   @objc public func store(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(StoreRequest.self)
-      
+
     guard let secretData = args.value.data(using: .utf8) else {
         throw NSError(domain: "StoreErrorDomain", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid secret string"])
     }
 
-    // Create an access control object that requires user presence (biometrics or device passcode)
-    // and makes the item accessible only when the device is unlocked.
-    var error: Unmanaged<CFError>?
-    guard let accessControl = SecAccessControlCreateWithFlags(
-        nil,
-        kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-        .userPresence,
-        &error
-    ) else {
-        throw error!.takeRetainedValue() as Error
-    }
-
-    // Build the keychain query. The account attribute here is used as the key to store/retrieve the secret.
-    let account = "com.impierce.identity-wallet.unime-dev"
-    let query: [String: Any] = [
+    var query: [String: Any] = [
         kSecClass as String: kSecClassGenericPassword,
-        kSecAttrAccount as String: account,
-        kSecAttrAccessControl as String: accessControl,
+        kSecAttrService as String: args.service,
+        kSecAttrAccount as String: args.user,
         kSecValueData as String: secretData
     ]
 
-    // Delete any existing item with this account.
-    SecItemDelete(query as CFDictionary)
-    
-    // Add the new item to the keychain.
+    if args.biometric ?? true {
+        var error: Unmanaged<CFError>?
+        guard let accessControl = SecAccessControlCreateWithFlags(
+            nil,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            .userPresence,
+            &error
+        ) else {
+            throw error!.takeRetainedValue() as Error
+        }
+        query[kSecAttrAccessControl as String] = accessControl
+    } else {
+        query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+    }
+
+    let deleteQuery: [String: Any] = [
+        kSecClass as String: kSecClassGenericPassword,
+        kSecAttrService as String: args.service,
+        kSecAttrAccount as String: args.user
+    ]
+    SecItemDelete(deleteQuery as CFDictionary)
+
     let status = SecItemAdd(query as CFDictionary, nil)
     guard status == errSecSuccess else {
-        // throw KeychainError(status: status)
         throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: nil)
     }
 
@@ -52,49 +63,50 @@ class KeystorePlugin: Plugin {
   }
 
   @objc public func retrieve(_ invoke: Invoke) throws {
-      let account = "com.impierce.identity-wallet.unime-dev"
+      let args = try invoke.parseArgs(ItemRequest.self)
+
       let context = LAContext()
-      context.localizedReason = "Access your UniMe password"
+      context.localizedReason = "Access your Passero secrets"
 
       let query: [String: Any] = [
           kSecClass as String: kSecClassGenericPassword,
-          kSecAttrAccount as String: account,
+          kSecAttrService as String: args.service,
+          kSecAttrAccount as String: args.user,
           kSecReturnData as String: true,
-          kSecUseAuthenticationContext as String: context,
-          // kSecUseOperationPrompt as String: "Authenticate to retrieve your secret"
+          kSecMatchLimit as String: kSecMatchLimitOne,
+          kSecUseAuthenticationContext as String: context
       ]
 
       var item: CFTypeRef?
       let status = SecItemCopyMatching(query as CFDictionary, &item)
 
-      // Check the result of the query.
       guard status == errSecSuccess else {
           throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: nil)
       }
 
-      // Convert the returned data into a String.
       guard let data = item as? Data,
             let secret = String(data: data, encoding: .utf8) else {
-          throw NSError(domain: "com.impierce.identity-wallet", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to decode secret"])
+          throw NSError(domain: "app.passero.keystore", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to decode secret"])
       }
 
       invoke.resolve(["value": secret])
   }
 
   @objc public func remove(_ invoke: Invoke) throws {
-      let account = "com.impierce.identity-wallet.unime-dev"
-      
+      let args = try invoke.parseArgs(ItemRequest.self)
+
       let query: [String: Any] = [
           kSecClass as String: kSecClassGenericPassword,
-          kSecAttrAccount as String: account
+          kSecAttrService as String: args.service,
+          kSecAttrAccount as String: args.user
       ]
-      
+
       let status = SecItemDelete(query as CFDictionary)
-      
+
       guard status == errSecSuccess || status == errSecItemNotFound else {
           throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: nil)
       }
-      
+
       invoke.resolve()
   }
 }
