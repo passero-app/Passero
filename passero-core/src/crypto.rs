@@ -42,6 +42,33 @@ pub fn import_secret_key(armored: &str) -> Result<Cert> {
             "no secret key material in imported key".to_string(),
         ));
     }
+    let policy = StandardPolicy::new();
+    let usable = cert
+        .keys()
+        .unencrypted_secret()
+        .with_policy(&policy, None)
+        .for_transport_encryption()
+        .for_storage_encryption()
+        .next()
+        .is_some();
+    if !usable {
+        let protected = cert
+            .keys()
+            .secret()
+            .with_policy(&policy, None)
+            .for_transport_encryption()
+            .for_storage_encryption()
+            .next()
+            .is_some();
+        if protected {
+            return Err(CoreError::Crypto(
+                "secret key is passphrase-protected; export it without a passphrase".to_string(),
+            ));
+        }
+        return Err(CoreError::Crypto(
+            "no decryption-capable secret key in imported key".to_string(),
+        ));
+    }
     Ok(cert)
 }
 
