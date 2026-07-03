@@ -1,10 +1,23 @@
+use mockito::Matcher;
 use passero_core::github::{poll_once, refresh, request_device_code, PollResult};
+
+fn device_grant_body() -> Matcher {
+    Matcher::AllOf(vec![
+        Matcher::UrlEncoded("client_id".into(), "client123".into()),
+        Matcher::UrlEncoded("device_code".into(), "dc123".into()),
+        Matcher::UrlEncoded(
+            "grant_type".into(),
+            "urn:ietf:params:oauth:grant-type:device_code".into(),
+        ),
+    ])
+}
 
 #[test]
 fn device_code_request_parses() {
     let mut server = mockito::Server::new();
     let _m = server
         .mock("POST", "/login/device/code")
+        .match_body(Matcher::UrlEncoded("client_id".into(), "client123".into()))
         .with_status(200)
         .with_header("content-type", "application/json")
         .with_body(r#"{"device_code":"dc123","user_code":"ABCD-1234","verification_uri":"https://github.com/login/device","expires_in":900,"interval":5}"#)
@@ -20,6 +33,7 @@ fn poll_pending_then_token() {
     let mut server = mockito::Server::new();
     let m = server
         .mock("POST", "/login/oauth/access_token")
+        .match_body(device_grant_body())
         .with_status(200)
         .with_body(r#"{"error":"authorization_pending"}"#)
         .expect(1)
@@ -32,6 +46,7 @@ fn poll_pending_then_token() {
 
     let _m2 = server
         .mock("POST", "/login/oauth/access_token")
+        .match_body(device_grant_body())
         .with_status(200)
         .with_body(r#"{"access_token":"ghu_tok","expires_in":28800,"refresh_token":"ghr_ref","token_type":"bearer"}"#)
         .create();
@@ -75,6 +90,11 @@ fn refresh_parses() {
     let mut server = mockito::Server::new();
     let _m = server
         .mock("POST", "/login/oauth/access_token")
+        .match_body(Matcher::AllOf(vec![
+            Matcher::UrlEncoded("client_id".into(), "client123".into()),
+            Matcher::UrlEncoded("refresh_token".into(), "ghr_old".into()),
+            Matcher::UrlEncoded("grant_type".into(), "refresh_token".into()),
+        ]))
         .with_status(200)
         .with_body(r#"{"access_token":"ghu_new","expires_in":28800,"refresh_token":"ghr_new","token_type":"bearer"}"#)
         .create();

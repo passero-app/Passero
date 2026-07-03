@@ -1,5 +1,6 @@
 use crate::{CoreError, Result};
 use serde::Deserialize;
+use std::time::Duration;
 
 #[derive(Debug, Deserialize)]
 pub struct DeviceCode {
@@ -32,8 +33,15 @@ struct TokenOrError {
     expires_in: Option<u64>,
 }
 
+fn agent() -> ureq::Agent {
+    ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(10))
+        .build()
+}
+
 pub fn request_device_code(base: &str, client_id: &str) -> Result<DeviceCode> {
-    let resp: DeviceCode = ureq::post(&format!("{base}/login/device/code"))
+    let resp: DeviceCode = agent()
+        .post(&format!("{base}/login/device/code"))
         .set("Accept", "application/json")
         .send_form(&[("client_id", client_id)])
         .map_err(|e| CoreError::Http(e.to_string()))?
@@ -43,7 +51,8 @@ pub fn request_device_code(base: &str, client_id: &str) -> Result<DeviceCode> {
 }
 
 pub fn poll_once(base: &str, client_id: &str, device_code: &str) -> Result<PollResult> {
-    let resp: TokenOrError = ureq::post(&format!("{base}/login/oauth/access_token"))
+    let resp: TokenOrError = agent()
+        .post(&format!("{base}/login/oauth/access_token"))
         .set("Accept", "application/json")
         .send_form(&[
             ("client_id", client_id),
@@ -68,7 +77,8 @@ pub fn poll_once(base: &str, client_id: &str, device_code: &str) -> Result<PollR
 }
 
 pub fn refresh(base: &str, client_id: &str, refresh_token: &str) -> Result<Token> {
-    let resp: TokenOrError = ureq::post(&format!("{base}/login/oauth/access_token"))
+    let resp: TokenOrError = agent()
+        .post(&format!("{base}/login/oauth/access_token"))
         .set("Accept", "application/json")
         .send_form(&[
             ("client_id", client_id),
