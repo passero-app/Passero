@@ -4,6 +4,7 @@
   import PasswordViewer from "../components/PasswordViewer.svelte";
   import PasswordEditor from "../components/PasswordEditor.svelte";
   import SettingsView from "./SettingsView.svelte";
+  import MobileSettings from "./MobileSettings.svelte";
   import GpgView from "./GpgView.svelte";
   import VaultSwitcher from "../components/VaultSwitcher.svelte";
   import { ui } from "$lib/stores/ui.svelte";
@@ -46,6 +47,20 @@
     </div>
     <div class="flex-1 momentum-scroll">
       <SettingsView />
+    </div>
+  {:else if ui.currentView === "sync"}
+    <div class="flex items-center gap-1 px-2 pt-safe border-b border-zinc-800 bg-zinc-950">
+      <button
+        class="flex items-center gap-1 px-2 min-h-[44px] text-blue-400 active:opacity-60"
+        onclick={() => ui.navigate("main")}
+      >
+        <span class="text-xl leading-none">‹</span>
+        <span class="text-base">Passwords</span>
+      </button>
+      <h1 class="flex-1 text-center text-base font-semibold pr-16">Sync &amp; Device</h1>
+    </div>
+    <div class="flex-1 momentum-scroll">
+      <MobileSettings />
     </div>
   {:else if ui.currentView === "gpg"}
     <div class="flex items-center gap-1 px-2 pt-safe border-b border-zinc-800 bg-zinc-950">
@@ -129,6 +144,12 @@
           onclick={() => ui.navigate("settings")}
         >
           Settings
+        </button>
+        <button
+          class="w-full text-left px-3 min-h-[44px] rounded text-sm text-zinc-300 hover:bg-zinc-800 active:bg-zinc-800"
+          onclick={() => ui.navigate("sync")}
+        >
+          Sync &amp; Device
         </button>
       </div>
     {/if}
