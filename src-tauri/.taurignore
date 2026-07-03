@@ -1,0 +1,3 @@
+/gen
+/plugins/tauri-plugin-keystore/.tauri
+/plugins/tauri-plugin-keystore/target
