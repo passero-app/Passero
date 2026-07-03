@@ -18,6 +18,11 @@ class ItemRequest: Decodable {
 }
 
 class KeystorePlugin: Plugin {
+  private func keychainError(_ status: OSStatus) -> NSError {
+    let message = SecCopyErrorMessageString(status, nil) as String? ?? "OSStatus \(status)"
+    return NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: [NSLocalizedDescriptionKey: message])
+  }
+
   @objc public func store(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(StoreRequest.self)
 
@@ -40,23 +45,28 @@ class KeystorePlugin: Plugin {
             .userPresence,
             &error
         ) else {
-            throw error!.takeRetainedValue() as Error
+            throw error?.takeRetainedValue() ?? NSError(domain: "app.passero.keystore", code: -1, userInfo: nil)
         }
         query[kSecAttrAccessControl as String] = accessControl
     } else {
         query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
     }
 
-    let deleteQuery: [String: Any] = [
-        kSecClass as String: kSecClassGenericPassword,
-        kSecAttrService as String: args.service,
-        kSecAttrAccount as String: args.user
-    ]
-    SecItemDelete(deleteQuery as CFDictionary)
-
-    let status = SecItemAdd(query as CFDictionary, nil)
+    var status = SecItemAdd(query as CFDictionary, nil)
+    if status == errSecDuplicateItem {
+        let deleteQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: args.service,
+            kSecAttrAccount as String: args.user
+        ]
+        let deleteStatus = SecItemDelete(deleteQuery as CFDictionary)
+        guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
+            throw keychainError(deleteStatus)
+        }
+        status = SecItemAdd(query as CFDictionary, nil)
+    }
     guard status == errSecSuccess else {
-        throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: nil)
+        throw keychainError(status)
     }
 
     invoke.resolve()
@@ -81,7 +91,7 @@ class KeystorePlugin: Plugin {
       let status = SecItemCopyMatching(query as CFDictionary, &item)
 
       guard status == errSecSuccess else {
-          throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: nil)
+          throw keychainError(status)
       }
 
       guard let data = item as? Data,
@@ -104,7 +114,7 @@ class KeystorePlugin: Plugin {
       let status = SecItemDelete(query as CFDictionary)
 
       guard status == errSecSuccess || status == errSecItemNotFound else {
-          throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: nil)
+          throw keychainError(status)
       }
 
       invoke.resolve()
