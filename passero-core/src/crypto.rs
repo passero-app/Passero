@@ -35,6 +35,16 @@ pub fn cert_from_bytes(bytes: &[u8]) -> Result<Cert> {
     Cert::from_bytes(bytes).map_err(map_crypto)
 }
 
+pub fn import_secret_key(armored: &str) -> Result<Cert> {
+    let cert = Cert::from_reader(armored.as_bytes()).map_err(map_crypto)?;
+    if !cert.is_tsk() {
+        return Err(CoreError::Crypto(
+            "no secret key material in imported key".to_string(),
+        ));
+    }
+    Ok(cert)
+}
+
 pub fn encrypt(plaintext: &[u8], recipients: &[Cert]) -> Result<Vec<u8>> {
     let policy = StandardPolicy::new();
 
