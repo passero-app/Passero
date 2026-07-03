@@ -6,6 +6,7 @@ use std::time::SystemTime;
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
+use tauri_plugin_keystore::{KeystoreExt, RemoveRequest, RetrieveRequest, StoreRequest};
 use totp_rs::TOTP;
 use url::Url;
 
@@ -14,10 +15,21 @@ use crate::error::{PasseroError, Result};
 use passero_core::crypto::{cert_from_bytes, generate_key, Cert};
 use passero_core::{store, sync};
 
+const GITHUB_CLIENT_ID: &str = "Iv23litEb2DKDwJNLkVX";
+const GITHUB_BASE: &str = "https://github.com";
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct GithubAuth {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub expires_at: Option<u64>,
+}
+
 pub struct IosState {
     pub store_dir: Mutex<PathBuf>,
     pub key_armored: Mutex<Option<Vec<u8>>>,
     pub token: Mutex<Option<String>>,
+    pub device_login: Mutex<Option<(String, u64)>>,
 }
 
 impl Default for IosState {
@@ -26,6 +38,7 @@ impl Default for IosState {
             store_dir: Mutex::new(PathBuf::new()),
             key_armored: Mutex::new(None),
             token: Mutex::new(None),
+            device_login: Mutex::new(None),
         }
     }
 }
@@ -101,6 +114,140 @@ fn store_dir(state: &State<'_, IosState>) -> PathBuf {
 
 fn token(state: &State<'_, IosState>) -> Option<String> {
     state.token.lock().unwrap().clone()
+}
+
+fn now_unix() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+fn save_github_auth(app: &tauri::AppHandle, auth: &GithubAuth) -> Result<()> {
+    let value =
+        serde_json::to_string(auth).map_err(|e| PasseroError::ConfigError(e.to_string()))?;
+    app.keystore()
+        .store(StoreRequest {
+            service: "app.passero".into(),
+            user: "github-auth".into(),
+            value,
+            biometric: false,
+        })
+        .map_err(|e| PasseroError::ConfigError(e.to_string()))
+}
+
+fn read_github_auth(app: &tauri::AppHandle) -> Result<Option<GithubAuth>> {
+    let resp = app
+        .keystore()
+        .retrieve(RetrieveRequest {
+            service: "app.passero".into(),
+            user: "github-auth".into(),
+        })
+        .map_err(|e| PasseroError::ConfigError(e.to_string()))?;
+    match resp.value {
+        Some(value) => serde_json::from_str(&value)
+            .map(Some)
+            .map_err(|e| PasseroError::ConfigError(e.to_string())),
+        None => Ok(None),
+    }
+}
+
+fn migrate_legacy_pat(app: &tauri::AppHandle) -> Result<Option<String>> {
+    let Some(pat) = config::get_pat(app)? else {
+        return Ok(None);
+    };
+    save_github_auth(
+        app,
+        &GithubAuth {
+            access_token: pat.clone(),
+            refresh_token: None,
+            expires_at: None,
+        },
+    )?;
+    config::clear_pat(app)?;
+    Ok(Some(pat))
+}
+
+fn get_valid_token(app: &tauri::AppHandle) -> Result<Option<String>> {
+    let Some(mut auth) = read_github_auth(app)? else {
+        return migrate_legacy_pat(app);
+    };
+    if let (Some(exp), Some(refresh_token)) = (auth.expires_at, auth.refresh_token.clone()) {
+        if now_unix() >= exp {
+            let t = passero_core::github::refresh(GITHUB_BASE, GITHUB_CLIENT_ID, &refresh_token)
+                .map_err(|e| PasseroError::GitError(e.to_string()))?;
+            auth = GithubAuth {
+                access_token: t.access_token,
+                refresh_token: t.refresh_token,
+                expires_at: t.expires_in.map(|s| now_unix() + s.saturating_sub(60)),
+            };
+            save_github_auth(app, &auth)?;
+        }
+    }
+    Ok(Some(auth.access_token))
+}
+
+#[tauri::command]
+pub async fn github_login_start(state: State<'_, IosState>) -> Result<serde_json::Value> {
+    let dc = passero_core::github::request_device_code(GITHUB_BASE, GITHUB_CLIENT_ID)
+        .map_err(|e| PasseroError::GitError(e.to_string()))?;
+    *state.device_login.lock().unwrap() = Some((dc.device_code.clone(), dc.interval));
+    Ok(serde_json::json!({
+        "userCode": dc.user_code,
+        "verificationUri": dc.verification_uri,
+        "interval": dc.interval
+    }))
+}
+
+#[tauri::command]
+pub async fn github_login_poll(
+    app: tauri::AppHandle,
+    state: State<'_, IosState>,
+) -> Result<String> {
+    let (device_code, _) = state
+        .device_login
+        .lock()
+        .unwrap()
+        .clone()
+        .ok_or_else(|| PasseroError::GitError("no login in progress".into()))?;
+    let result = match passero_core::github::poll_once(GITHUB_BASE, GITHUB_CLIENT_ID, &device_code)
+    {
+        Ok(r) => r,
+        Err(e) => {
+            *state.device_login.lock().unwrap() = None;
+            return Err(PasseroError::GitError(e.to_string()));
+        }
+    };
+    match result {
+        passero_core::github::PollResult::Pending => Ok("pending".into()),
+        passero_core::github::PollResult::SlowDown => Ok("slow_down".into()),
+        passero_core::github::PollResult::Token(t) => {
+            let expires_at = t.expires_in.map(|s| now_unix() + s.saturating_sub(60));
+            save_github_auth(
+                &app,
+                &GithubAuth {
+                    access_token: t.access_token.clone(),
+                    refresh_token: t.refresh_token,
+                    expires_at,
+                },
+            )?;
+            *state.token.lock().unwrap() = Some(t.access_token);
+            *state.device_login.lock().unwrap() = None;
+            Ok("authorized".into())
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn github_logout(app: tauri::AppHandle, state: State<'_, IosState>) -> Result<()> {
+    app.keystore()
+        .remove(RemoveRequest {
+            service: "app.passero".into(),
+            user: "github-auth".into(),
+        })
+        .map_err(|e| PasseroError::ConfigError(e.to_string()))?;
+    *state.token.lock().unwrap() = None;
+    Ok(())
 }
 
 fn device_gpg_key(state: &State<'_, IosState>) -> Option<GpgKey> {
@@ -349,8 +496,8 @@ pub async fn load_key(
     let fingerprint = cert.fingerprint().to_hex();
     *state.key_armored.lock().unwrap() = Some(bytes);
     config::set_store_dir(&app, &store_dir(&state).to_string_lossy())?;
-    if let Some(pat) = config::get_pat(&app)? {
-        *state.token.lock().unwrap() = Some(pat);
+    if let Some(tok) = get_valid_token(&app)? {
+        *state.token.lock().unwrap() = Some(tok);
     }
     Ok(fingerprint)
 }
@@ -364,14 +511,14 @@ pub async fn clone_store(
 ) -> Result<()> {
     let dir = store_dir(&state);
     let token = if token.is_empty() {
-        config::get_pat(&app)?.unwrap_or_default()
+        get_valid_token(&app)?.unwrap_or_default()
     } else {
         token
     };
     *state.token.lock().unwrap() = Some(token.clone());
     sync::clone(&url, &dir, Some(&token)).map_err(|e| PasseroError::GitError(e.to_string()))?;
     let name = vault_name_from_url(&url);
-    config::register_cloned_vault(&app, &name, &dir.to_string_lossy(), &url, &token)?;
+    config::register_cloned_vault(&app, &name, &dir.to_string_lossy(), &url)?;
     Ok(())
 }
 
@@ -379,7 +526,7 @@ pub async fn clone_store(
 pub async fn get_sync_settings(app: tauri::AppHandle) -> Result<SyncSettings> {
     Ok(SyncSettings {
         repo_url: config::get_repo_url(&app)?,
-        has_pat: config::get_pat(&app)?.is_some(),
+        has_pat: read_github_auth(&app)?.is_some(),
     })
 }
 
@@ -390,8 +537,16 @@ pub async fn set_sync_settings(
     repo_url: Option<String>,
     pat: Option<String>,
 ) -> Result<()> {
-    config::set_sync_settings(&app, repo_url, pat)?;
-    if let Some(token) = config::get_pat(&app)? {
+    config::set_sync_settings(&app, repo_url)?;
+    if let Some(token) = pat.filter(|s| !s.is_empty()) {
+        save_github_auth(
+            &app,
+            &GithubAuth {
+                access_token: token.clone(),
+                refresh_token: None,
+                expires_at: None,
+            },
+        )?;
         *state.token.lock().unwrap() = Some(token);
     }
     Ok(())

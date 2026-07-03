@@ -121,6 +121,15 @@ pub(crate) fn get_pat(app: &tauri::AppHandle) -> Result<Option<String>> {
     Ok(config.pat)
 }
 
+pub(crate) fn clear_pat(app: &tauri::AppHandle) -> Result<()> {
+    let (mut config, store) = load_config(app)?;
+    if config.pat.is_some() {
+        config.pat = None;
+        save_config(&store, &config)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn get_repo_url(app: &tauri::AppHandle) -> Result<Option<String>> {
     let (config, _store) = load_config(app)?;
     Ok(config.repo_url)
@@ -129,13 +138,9 @@ pub(crate) fn get_repo_url(app: &tauri::AppHandle) -> Result<Option<String>> {
 pub(crate) fn set_sync_settings(
     app: &tauri::AppHandle,
     repo_url: Option<String>,
-    pat: Option<String>,
 ) -> Result<()> {
     let (mut config, store) = load_config(app)?;
     config.repo_url = repo_url.filter(|s| !s.is_empty());
-    if let Some(token) = pat.filter(|s| !s.is_empty()) {
-        config.pat = Some(token);
-    }
     save_config(&store, &config)
 }
 
@@ -153,11 +158,9 @@ pub(crate) fn register_cloned_vault(
     name: &str,
     path: &str,
     url: &str,
-    pat: &str,
 ) -> Result<()> {
     let (mut config, store) = load_config(app)?;
 
-    config.pat = Some(pat.to_string());
     config.repo_url = Some(url.to_string());
     config.password_store_dir = Some(path.to_string());
 
