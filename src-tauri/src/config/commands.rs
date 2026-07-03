@@ -34,9 +34,6 @@ fn load_config(app: &tauri::AppHandle) -> Result<(AppConfig, std::sync::Arc<taur
         device_key_fingerprint: store
             .get("device_key_fingerprint")
             .and_then(|v: serde_json::Value| v.as_str().map(String::from)),
-        pat: store
-            .get("pat")
-            .and_then(|v: serde_json::Value| v.as_str().map(String::from)),
         repo_url: store
             .get("repo_url")
             .and_then(|v: serde_json::Value| v.as_str().map(String::from)),
@@ -81,11 +78,7 @@ fn save_config(
     } else {
         store.delete("device_key_fingerprint");
     }
-    if let Some(ref v) = config.pat {
-        store.set("pat", serde_json::json!(v));
-    } else {
-        store.delete("pat");
-    }
+    store.delete("pat");
     if let Some(ref v) = config.repo_url {
         store.set("repo_url", serde_json::json!(v));
     } else {
@@ -117,15 +110,22 @@ pub(crate) fn get_device_key_fingerprint(app: &tauri::AppHandle) -> Result<Optio
 }
 
 pub(crate) fn get_pat(app: &tauri::AppHandle) -> Result<Option<String>> {
-    let (config, _store) = load_config(app)?;
-    Ok(config.pat)
+    let store = app
+        .store("config.json")
+        .map_err(|e: tauri_plugin_store::Error| PasseroError::ConfigError(e.to_string()))?;
+    Ok(store
+        .get("pat")
+        .and_then(|v: serde_json::Value| v.as_str().map(String::from)))
 }
 
 pub(crate) fn clear_pat(app: &tauri::AppHandle) -> Result<()> {
-    let (mut config, store) = load_config(app)?;
-    if config.pat.is_some() {
-        config.pat = None;
-        save_config(&store, &config)?;
+    let store = app
+        .store("config.json")
+        .map_err(|e: tauri_plugin_store::Error| PasseroError::ConfigError(e.to_string()))?;
+    if store.delete("pat") {
+        store
+            .save()
+            .map_err(|e: tauri_plugin_store::Error| PasseroError::ConfigError(e.to_string()))?;
     }
     Ok(())
 }
@@ -190,7 +190,6 @@ pub(crate) fn register_cloned_vault(
 pub(crate) fn reset_device_config(app: &tauri::AppHandle) -> Result<()> {
     let (mut config, store) = load_config(app)?;
     config.device_key_fingerprint = None;
-    config.pat = None;
     config.repo_url = None;
     config.vaults.clear();
     config.active_vault_id = None;

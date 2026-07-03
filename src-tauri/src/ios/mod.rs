@@ -187,6 +187,16 @@ fn get_valid_token(app: &tauri::AppHandle) -> Result<Option<String>> {
     Ok(Some(auth.access_token))
 }
 
+fn sync_token(app: &tauri::AppHandle, state: &State<'_, IosState>) -> Result<Option<String>> {
+    match get_valid_token(app)? {
+        Some(t) => {
+            *state.token.lock().unwrap() = Some(t.clone());
+            Ok(Some(t))
+        }
+        None => Ok(token(state)),
+    }
+}
+
 #[tauri::command]
 pub async fn github_login_start(state: State<'_, IosState>) -> Result<serde_json::Value> {
     let dc = passero_core::github::request_device_code(GITHUB_BASE, GITHUB_CLIENT_ID)
@@ -495,10 +505,10 @@ pub async fn load_key(
     let cert = cert_from_bytes(&bytes).map_err(|e| PasseroError::GpgError(e.to_string()))?;
     let fingerprint = cert.fingerprint().to_hex();
     *state.key_armored.lock().unwrap() = Some(bytes);
-    config::set_store_dir(&app, &store_dir(&state).to_string_lossy())?;
     if let Some(tok) = get_valid_token(&app)? {
         *state.token.lock().unwrap() = Some(tok);
     }
+    config::set_store_dir(&app, &store_dir(&state).to_string_lossy())?;
     Ok(fingerprint)
 }
 
@@ -693,18 +703,18 @@ fn open_repo(dir: &std::path::Path) -> Result<git2::Repository> {
 }
 
 #[tauri::command]
-pub async fn git_pull(state: State<'_, IosState>) -> Result<String> {
+pub async fn git_pull(app: tauri::AppHandle, state: State<'_, IosState>) -> Result<String> {
     let dir = store_dir(&state);
-    let tok = token(&state);
+    let tok = sync_token(&app, &state)?;
     let repo = open_repo(&dir)?;
     sync::pull(&repo, tok.as_deref()).map_err(|e| PasseroError::GitError(e.to_string()))?;
     Ok(String::new())
 }
 
 #[tauri::command]
-pub async fn git_push(state: State<'_, IosState>) -> Result<String> {
+pub async fn git_push(app: tauri::AppHandle, state: State<'_, IosState>) -> Result<String> {
     let dir = store_dir(&state);
-    let tok = token(&state);
+    let tok = sync_token(&app, &state)?;
     let repo = open_repo(&dir)?;
     sync::commit_all(&repo, "passero: sync").map_err(|e| PasseroError::GitError(e.to_string()))?;
     sync::push(&repo, tok.as_deref()).map_err(|e| PasseroError::GitError(e.to_string()))?;
@@ -718,6 +728,7 @@ pub async fn git_log(_state: State<'_, IosState>, _count: Option<u32>) -> Result
 
 #[tauri::command]
 pub async fn git_clone(
+    app: tauri::AppHandle,
     state: State<'_, IosState>,
     url: String,
     path: Option<String>,
@@ -726,7 +737,7 @@ pub async fn git_clone(
         Some(p) => PathBuf::from(p),
         None => store_dir(&state),
     };
-    let tok = token(&state);
+    let tok = sync_token(&app, &state)?;
     sync::clone(&url, &into, tok.as_deref())
         .map_err(|e| PasseroError::GitError(e.to_string()))?;
     Ok(())

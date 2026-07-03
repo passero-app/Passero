@@ -20,8 +20,6 @@ pub struct AppConfig {
     #[serde(default)]
     pub device_key_fingerprint: Option<String>,
     #[serde(default)]
-    pub pat: Option<String>,
-    #[serde(default)]
     pub repo_url: Option<String>,
 }
 
@@ -36,7 +34,6 @@ impl Default for AppConfig {
             vaults: Vec::new(),
             active_vault_id: None,
             device_key_fingerprint: None,
-            pat: None,
             repo_url: None,
         }
     }
