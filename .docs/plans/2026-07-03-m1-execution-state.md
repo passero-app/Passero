@@ -23,6 +23,11 @@ Plan: `.docs/plans/2026-07-03-passero-ios-m1.md`. Process: subagent per task, tw
 - Task 10: validate_secret_key command + import UI (depends on 8 AND 9 both landed — touches ios/mod.rs, lib.rs, M0Setup.svelte; do NOT run parallel with anything touching M0Setup)
 - Final: sim build green, push all, final whole-branch review, then Task 11 on-device smoke test (user + phone, Hotspot OFF): FaceID keystore roundtrip, GitHub sign-in → clone/pull/push tokenless, key import + decrypt, live refresh() sanity (no client_secret — contract risk), sparrow icon visible.
 
+## OPEN BUGS from on-device testing (next session, in priority order)
+1. **v6 key interop (CRITICAL for real use):** sequoia 2.x CertBuilder defaults to RFC 9580 (v6) keys; desktop GnuPG 2.4 fails with "packet(1) with unknown version 6" on anything the phone-generated key touches. Fix: `generate_key` in passero-core/src/crypto.rs must set the RFC 4880 profile (CertBuilder::set_profile? check sequoia 2.3 API name) so device keys are v4. Fred must regenerate the device key afterwards. Verify with a phone-encrypt → desktop `pass` decrypt roundtrip.
+2. **Second-vault clone breaks the store:** phone "Passwords" list shows "pass command failed: io error: No such file or directory (os error 2)" after cloning a second vault (smith-bz/password-store) — sync::clone (passero-core/src/sync.rs:31) returns any EXISTING repo at the fixed store dir, so vault registration and directory contents disagree. Needs per-vault directories keyed by vault id (config already models multiple vaults) or a clean-replace flow. Investigate ios store_dir + config::register_cloned_vault interplay.
+3. Minor UI follow-ups from reviews: poll-race guard after sign-out, timer-teardown decoupling, fingerprint persisted before keychain write (shared with generate flow), repo-list pagination >100.
+
 ## Backend contract for the UI (from Task 7)
 - github_login_start → {userCode, verificationUri, interval}; github_login_poll → "pending"|"slow_down"|"authorized", throws on denial (state auto-cleared); github_logout; get_sync_settings.has_pat = keystore-derived.
 
