@@ -39,3 +39,6 @@ Plan: `.docs/plans/2026-07-03-passero-ios-m1.md`. Process: subagent per task, tw
 - Device dev run: npm run tauri ios dev -- "Fred’s iPhone" --host (positional device BEFORE --host; Personal Hotspot OFF).
 - Reviewer dispatches MUST include the read-only constraint (one reviewer previously switched branches and rm -rf'd the untracked vendored plugin dir; recovered from git).
 - Icon regen: `npx tauri icon app-icon.png --ios-color "#18181B"` — do not treat resulting icon diffs as anomalies.
+
+### Late data point (bug 1)
+The `test` entry (phone-created, post-`pass init` with both fprs) decrypts on BOTH phone and desktop; `Test from passero` (also phone-created) fails on desktop with "unknown version 6"; `netflix.com` (desktop-created) is desktop-only. So phone→both works when the desktop-readable v4 PKESK is reachable — gpg 2.4's failure is packet-order/shape dependent, not absolute. Confirms: pin generate_key to v4 (RFC 4880) for deterministic interop; when reproducing, `gpg --list-packets` on test.gpg vs "Test from passero.gpg" will show the difference. The store lives at ~/src/github.com/smith-bz/password-store on the desktop; the stray `` `pwd` `` directory inside it is still unexplained.
