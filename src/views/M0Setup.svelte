@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { open } from "@tauri-apps/plugin-shell";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import { store, retrieve, remove } from "../lib/keystore";
   import { checkStatus } from "@tauri-apps/plugin-biometric";
 
@@ -27,6 +27,8 @@
   let ghState = $state<"idle" | "code" | "authorized" | "failed">("idle");
   let ghError = $state<string | null>(null);
   let userCode = $state("");
+  let verificationUri = $state("");
+  let codeCopied = $state(false);
   let repoUrl = $state("");
   let showAdvanced = $state(false);
   let patInput = $state("");
@@ -184,10 +186,11 @@
         interval: number;
       }>("github_login_start");
       userCode = r.userCode;
+      verificationUri = r.verificationUri;
+      codeCopied = false;
       ghState = "code";
       pollMs = (r.interval + 1) * 1000;
       schedulePoll();
-      await open(r.verificationUri);
     } catch (e) {
       stopPolling();
       ghState = "failed";
@@ -326,6 +329,21 @@
           <p class="text-center font-mono text-3xl font-bold tracking-widest">
             {userCode}
           </p>
+          <button
+            class="w-full rounded bg-zinc-100 px-3 py-2 text-sm font-medium text-zinc-900 disabled:opacity-50"
+            onclick={async () => {
+              await navigator.clipboard.writeText(userCode);
+              codeCopied = true;
+            }}
+          >
+            {codeCopied ? "Copied ✓" : "Copy code"}
+          </button>
+          <button
+            class="w-full rounded bg-emerald-600 px-3 py-2 text-sm font-medium disabled:opacity-50"
+            onclick={() => openUrl(verificationUri)}
+          >
+            Open github.com to sign in
+          </button>
           <p class="text-center text-sm text-zinc-400">Waiting for authorization…</p>
         {:else if ghState === "failed"}
           <button
