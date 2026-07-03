@@ -36,7 +36,7 @@ passero-core = { path = "../passero-core" }
 
 [target.'cfg(target_os = "ios")'.dependencies]
 git2 = { version = "0.19", default-features = false, features = ["vendored-libgit2", "vendored-openssl", "https"] }
-tauri-plugin-keystore = "=2.1.0-alpha.1"
+tauri-plugin-keystore = { path = "plugins/tauri-plugin-keystore" }
 tauri-plugin-biometric = "2.3.2"
 
 [dev-dependencies]
