@@ -3,7 +3,15 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StoreRequest {
+    pub service: String,
+    pub user: String,
     pub value: String,
+    #[serde(default = "default_biometric")]
+    pub biometric: bool,
+}
+
+fn default_biometric() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize, Serialize)]
