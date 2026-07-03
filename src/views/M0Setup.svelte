@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { store, retrieve, remove } from "@impierce/tauri-plugin-keystore";
+  import { store, retrieve, remove } from "../lib/keystore";
   import { checkStatus } from "@tauri-apps/plugin-biometric";
 
   const KEYSTORE_SERVICE = "app.passero";
@@ -60,7 +60,7 @@
         { userId },
       );
       fingerprint = generated.fingerprint;
-      await store(generated.armored);
+      await store(KEYSTORE_SERVICE, KEYSTORE_USER, generated.armored);
       hasKey = true;
       status = "Key generated and saved to the Keychain.";
     } catch (e) {
