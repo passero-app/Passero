@@ -72,6 +72,11 @@ pub fn import_secret_key(armored: &str) -> Result<Cert> {
     Ok(cert)
 }
 
+pub fn export_public_key(cert: &Cert) -> Result<String> {
+    let bytes = cert.armored().to_vec().map_err(map_crypto)?;
+    String::from_utf8(bytes).map_err(map_crypto)
+}
+
 pub fn encrypt(plaintext: &[u8], recipients: &[Cert]) -> Result<Vec<u8>> {
     let policy = StandardPolicy::new();
 

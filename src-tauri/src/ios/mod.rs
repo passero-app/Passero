@@ -666,11 +666,23 @@ pub async fn import_gpg_key_from_keyserver(
 
 #[tauri::command]
 pub async fn export_gpg_key(
-    _state: State<'_, IosState>,
-    _key_id: String,
-    _secret: bool,
+    state: State<'_, IosState>,
+    key_id: String,
+    secret: bool,
 ) -> Result<String> {
-    Err(PasseroError::GpgError("not supported on iOS (M0)".into()))
+    if secret {
+        return Err(PasseroError::GpgError(
+            "secret key export is not supported on iOS".into(),
+        ));
+    }
+    let cert = loaded_cert(&state)?;
+    if !key_id.is_empty() && !cert.fingerprint().to_hex().eq_ignore_ascii_case(&key_id) {
+        return Err(PasseroError::GpgError(
+            "only the device key can be exported".into(),
+        ));
+    }
+    passero_core::crypto::export_public_key(&cert)
+        .map_err(|e| PasseroError::GpgError(e.to_string()))
 }
 
 #[tauri::command]
