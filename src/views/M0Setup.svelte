@@ -21,6 +21,8 @@
   let name = $state("Passero User");
   let email = $state("");
   let fingerprint = $state<string | null>(null);
+  let showImport = $state(false);
+  let importArmored = $state("");
 
   let ghState = $state<"idle" | "code" | "authorized" | "failed">("idle");
   let ghError = $state<string | null>(null);
@@ -78,6 +80,29 @@
       await store(KEYSTORE_SERVICE, KEYSTORE_USER, generated.armored);
       hasKey = true;
       status = "Key generated and saved to the Keychain.";
+    } catch (e) {
+      error = String(e);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function importKey() {
+    busy = true;
+    error = null;
+    status = null;
+    try {
+      const armored = importArmored;
+      const r = await invoke<{ fingerprint: string }>("validate_secret_key", {
+        armored,
+      });
+      await store(KEYSTORE_SERVICE, KEYSTORE_USER, armored);
+      await invoke("load_key", { armored });
+      importArmored = "";
+      showImport = false;
+      fingerprint = r.fingerprint;
+      hasKey = true;
+      status = "Key imported and saved to the Keychain.";
     } catch (e) {
       error = String(e);
     } finally {
@@ -411,6 +436,27 @@
         >
           Generate key
         </button>
+        <button
+          class="text-xs text-zinc-500 underline"
+          onclick={() => (showImport = !showImport)}
+        >
+          Import existing key
+        </button>
+        {#if showImport}
+          <textarea
+            class="w-full rounded bg-zinc-800 px-3 py-2 font-mono text-xs"
+            rows="6"
+            placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----"
+            bind:value={importArmored}
+          ></textarea>
+          <button
+            class="w-full rounded bg-zinc-700 px-3 py-2 text-sm font-medium disabled:opacity-50"
+            disabled={busy || !importArmored.trim()}
+            onclick={importKey}
+          >
+            Import
+          </button>
+        {/if}
         {#if fingerprint}
           <p class="break-all text-xs text-zinc-400">Fingerprint: {fingerprint}</p>
         {/if}

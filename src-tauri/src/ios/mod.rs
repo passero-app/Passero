@@ -468,6 +468,18 @@ pub async fn generate_in_app_key(
 }
 
 #[tauri::command]
+pub async fn validate_secret_key(
+    app: tauri::AppHandle,
+    armored: String,
+) -> Result<serde_json::Value> {
+    let cert = passero_core::crypto::import_secret_key(&armored)
+        .map_err(|e| PasseroError::GpgError(e.to_string()))?;
+    let fingerprint = cert.fingerprint().to_hex();
+    config::set_device_key_fingerprint(&app, &fingerprint)?;
+    Ok(serde_json::json!({ "fingerprint": fingerprint }))
+}
+
+#[tauri::command]
 pub async fn device_key_status(app: tauri::AppHandle) -> Result<DeviceKeyStatus> {
     let fingerprint = config::get_device_key_fingerprint(&app)?;
     Ok(DeviceKeyStatus {

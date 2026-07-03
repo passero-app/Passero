@@ -109,6 +109,7 @@ pub fn run() {
             ios::remove_recipient,
             ios::init_password_store,
             ios::generate_in_app_key,
+            ios::validate_secret_key,
             ios::device_key_status,
             ios::reset_device,
             ios::load_key,
